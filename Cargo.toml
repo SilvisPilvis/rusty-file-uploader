@@ -1,0 +1,12 @@
+[package]
+name = "rusty-file-upload"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tide = "0.16.0"
+serde = { version = "1.0.210", features = ["derive"] }
+tokio = { version = "1.40.0", features = ["full"] }
+femme = "2.2.1"
+color-eyre = "0.6.3"
+sqlx = { version = "0.8.2", features = ["runtime-tokio", "postgres"] }
