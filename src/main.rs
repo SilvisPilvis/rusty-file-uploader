@@ -32,13 +32,31 @@ async fn register_user(mut req: tide::Request<PgPool>) -> tide::Result<String> {
     Ok(format!("User: {} registered!", user.username.clone()))
 }
 
+async fn upload_file(mut req: tide::Request<PgPool>) -> tide::Result<String> {
+    // let user: User = req.body_json().await?;
+    // let pool = req.state();
+    // sqlx::query!(
+    //     "INSERT INTO users (username, password) VALUES ($1, $2)",
+    //     user.username,
+    //     user.password
+    // )
+    // .execute(pool)
+    // .await?;
+    let form = req.body_form().await?;
+    Ok(format!("User: {} uploaded {} files!", user.username.clone(), file_count))
+}
+
+
+
 #[tokio::main]
 async fn main() -> Result<()> {
     femme::with_level(femme::LevelFilter::Info);
 
     color_eyre::install()?;
 
-    std::env::set_var("DATABASE_URL", "postgresql://postgres:SanaS*7Brec@vinetaerentraute.id.lv/database");
+    // std::env::set_var("DATABASE_URL", "postgresql://postgres:SanaS*7Brec@vinetaerentraute.id.lv/database");
+    // std::env::set_var("DATABASE_URL", "postgresql://postgres:postgres@localhost/postgres");
+    std::env::set_var("DATABASE_URL", "postgres://postgres@localhost/postgres");
 
     let database_url = std::env::var("DATABASE_URL")
     .expect("DATABASE_URL must be set");
@@ -47,6 +65,10 @@ async fn main() -> Result<()> {
     log::info!("Connected to database");
 
     let mut app = tide::with_state(pool);
+
+    sqlx::migrate!("src/migrations").run(&pool).await?;
+    log::info!("Migrations ran");
+
     // let mut app = tide::new();
     
     app.with(
