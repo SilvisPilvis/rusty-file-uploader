@@ -1,17 +1,17 @@
 -- Add migration script here
-CREATE TABLE users(
+CREATE TABLE users (
     id SERIAL PRIMARY KEY,
     username VARCHAR(30),
     password VARCHAR(30)
-)
+);
 
-CREATE TABLE stores(
+CREATE TABLE stores (
     id SERIAL PRIMARY KEY,
     name VARCHAR(30),
-    userId VARCHAR(30),
-)
+    userId VARCHAR(30)
+);
 
-CREATE TABLE files(
+CREATE TABLE files (
     id SERIAL PRIMARY KEY,
-    name VARCHAR(256),
-)
+    name VARCHAR(256)
+);
