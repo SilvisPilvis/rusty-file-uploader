@@ -44,12 +44,12 @@ async fn register_user(mut req: tide::Request<PgPool>) -> tide::Result {
     let password = user.password.as_bytes();
     let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
-    let password_hash = argon2.hash_password(password, &salt).into();
+    let password_hash = argon2.hash_password(password, &salt).map_err(|e| anyhow::anyhow!(e))?.to_string();
 
     sqlx::query!(
         "INSERT INTO users (username, password) VALUES ($1, $2)",
         user.username,
-        hash_password
+        password_hash
     )
     .execute(pool)
     .await?;
@@ -57,10 +57,10 @@ async fn register_user(mut req: tide::Request<PgPool>) -> tide::Result {
     let message = format!("User: {} registered!", user.username.clone());
     log::info!("{message}");
 
-    let claims = serde_json::json!({
-        "username": user.username,
-        "exp": None, // token doesn't expire
-    });
+    // let claims = serde_json::json!({
+    //     "username": user.username,
+    //     "exp": None, // token doesn't expire
+    // });
     let token_key: Hmac<Sha384> = Hmac::new_from_slice(b"use-stringfrom-dot-env-here")?;
     let header = Header {
         algorithm: AlgorithmType::Hs384,
@@ -90,8 +90,8 @@ async fn login_user(mut req: tide::Request<PgPool>) -> tide::Result {
     .fetch_one(pool)
     .await?;
 
-    let db_password: String = row.password;
-    if db_password == "" || db_password == None {
+    let db_password: String= row.password.unwrap_or("null".to_string());
+    if db_password == "" || db_password == "null" {
         let mut res = tide::Response::new(400);
         res.set_body("User is not registered");
         return Ok(res)
@@ -107,7 +107,7 @@ async fn login_user(mut req: tide::Request<PgPool>) -> tide::Result {
         //     "username": user.username,
         //     "exp": None, // token doesn't expire
         // });
-        let token_key = Hmac::new_from_slice(b"use-stringfrom-dot-env-here")?;
+        let token_key: Hmac<Sha384> = Hmac::new_from_slice(b"use-stringfrom-dot-env-here")?;
         let header = Header {
             algorithm: AlgorithmType::Hs384,
             ..Default::default()
@@ -149,7 +149,7 @@ async fn login_user(mut req: tide::Request<PgPool>) -> tide::Result {
 async fn main() -> Result<(), sqlx::Error> {
     femme::with_level(femme::LevelFilter::Info);
 
-    color_eyre::install();
+    let _ = color_eyre::install();
 
     // let database_url = std::env::var("DATABASE_URL")
     // .expect("DATABASE_URL must be set");
@@ -160,7 +160,7 @@ async fn main() -> Result<(), sqlx::Error> {
 
     log::info!("Connected to database");
 
-    let mut app = tide::with_state(pool);
+    let mut app = tide::with_state(pool.clone());
 
     sqlx::migrate!("src/migrations").run(&pool).await?;
     log::info!("Migrations ran");
