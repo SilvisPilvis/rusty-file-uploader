@@ -5,7 +5,7 @@ use tide::log as log;
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
 use serde::{Deserialize, Serialize};
-use serde_json;
+// use serde_json;
 use argon2::{
     password_hash::{
         rand_core::OsRng,
@@ -24,18 +24,11 @@ struct User {
     password: String,
 }
 
-// async fn health_check(_req: tide::Request<()>) -> tide::Result<String> {
-//     Ok("API is healthy".to_string())
-// }
 
 async fn health_check(_req: tide::Request<PgPool>) -> tide::Result {
     let mut res = Response::new(200);
     res.set_body("API Is Up");
     Ok(res)
-    // Ok(tide::Response::new(200))
-    // Ok(tide::Response::builder(200)
-    //     .body("API Is Up")
-    //     .build())
 }
 
 async fn register_user(mut req: tide::Request<PgPool>) -> tide::Result {
@@ -103,10 +96,6 @@ async fn login_user(mut req: tide::Request<PgPool>) -> tide::Result {
     let parsed_hash = PasswordHash::new(&password_hash).map_err(|e| anyhow::anyhow!(e))?;
 
     if argon2.verify_password(user.password.as_bytes(), &parsed_hash).is_ok() {
-        // let claims = serde_json::json!({
-        //     "username": user.username,
-        //     "exp": None, // token doesn't expire
-        // });
         let token_key: Hmac<Sha384> = Hmac::new_from_slice(b"use-stringfrom-dot-env-here")?;
         let header = Header {
             algorithm: AlgorithmType::Hs384,
@@ -145,37 +134,26 @@ async fn login_user(mut req: tide::Request<PgPool>) -> tide::Result {
 
 
 
-#[tokio::main]
-async fn main() -> Result<(), sqlx::Error> {
+#[async_std::main]
+async fn main() -> Result<(), color_eyre::Report> {
     femme::with_level(femme::LevelFilter::Info);
+    color_eyre::install()?;
 
-    let _ = color_eyre::install();
-
-    // let database_url = std::env::var("DATABASE_URL")
-    // .expect("DATABASE_URL must be set");
-    // let pool = PgPool::connect(&database_url).await?;
     let pool = PgPoolOptions::new()
-        .max_connections(1)
+        .max_connections(5)
         .connect("postgres://postgres:postgres@localhost/postgres").await?;
 
     log::info!("Connected to database");
 
-    let mut app = tide::with_state(pool.clone());
-
-    sqlx::migrate!("src/migrations").run(&pool).await?;
-    log::info!("Migrations ran");
-
-    // let mut app = tide::new();
+    let mut app = tide::with_state(pool);
     
-    app.with(
-        tide::log::LogMiddleware::new()
-    );
+    app.with(tide::log::LogMiddleware::new());
 
     app.at("/").get(health_check);
     app.at("/register").post(register_user);
+    app.at("/login").post(login_user);
 
     app.listen("127.0.0.1:8000").await?;
-
 
     Ok(())
 }

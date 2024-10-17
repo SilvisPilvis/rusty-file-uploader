@@ -1,8 +1,11 @@
 -- Add migration script here
+
+DROP TABLE IF EXISTS users, stores, files;
+
 CREATE TABLE users (
     id SERIAL PRIMARY KEY,
     username VARCHAR(30),
-    password VARCHAR(30)
+    password VARCHAR(97)
 );
 
 CREATE TABLE stores (
