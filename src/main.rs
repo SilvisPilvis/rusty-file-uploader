@@ -83,7 +83,9 @@ async fn login_user(mut req: tide::Request<PgPool>) -> tide::Result {
     .fetch_one(pool)
     .await?;
 
-    let db_password: String= row.password.unwrap_or("null".to_string());
+    let db_password: String= row.password.unwrap();
+    let message = format!("Password is: {db_password}");
+    log::info!("{message}");
     if db_password == "" || db_password == "null" {
         let mut res = tide::Response::new(400);
         res.set_body("User is not registered");
@@ -93,7 +95,7 @@ async fn login_user(mut req: tide::Request<PgPool>) -> tide::Result {
     let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
     let password_hash = argon2.hash_password(db_password.as_bytes(), &salt).map_err(|e| anyhow::anyhow!(e))?.to_string();
-    let parsed_hash = PasswordHash::new(&password_hash).map_err(|e| anyhow::anyhow!(e))?;
+    let parsed_hash = PasswordHash::new(&db_password).map_err(|e| anyhow::anyhow!(e))?;
 
     if argon2.verify_password(user.password.as_bytes(), &parsed_hash).is_ok() {
         let token_key: Hmac<Sha384> = Hmac::new_from_slice(b"use-stringfrom-dot-env-here")?;
