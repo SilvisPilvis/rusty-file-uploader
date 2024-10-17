@@ -178,5 +178,9 @@ async fn main() -> Result<(), color_eyre::Report> {
 
     app.listen("127.0.0.1:8000").await?;
 
+    log::info!("Write Uploaded files to tempdir and if upload fails drop tempdir to delete files and try again");
+    log::info!("Or maybe just write file to upload dir and of chunk not whole then delete last chunk");
+    log::info!("Frontend loadingbag chunk  number as progress");
+
     Ok(())
 }
