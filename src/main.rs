@@ -17,13 +17,15 @@ use hmac::{Hmac, Mac};
 use sha2::Sha384;
 use jwt::{AlgorithmType, Header, SignWithKey, Token};
 use std::collections::BTreeMap;
+use tempfile::TempDir;
+use std::sync::Arc;
+use std::path::Path;
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 struct User {
     username: String,
     password: String,
 }
-
 
 async fn health_check(_req: tide::Request<PgPool>) -> tide::Result {
     let mut res = Response::new(200);
@@ -92,9 +94,7 @@ async fn login_user(mut req: tide::Request<PgPool>) -> tide::Result {
         return Ok(res)
     }
 
-    let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
-    let password_hash = argon2.hash_password(db_password.as_bytes(), &salt).map_err(|e| anyhow::anyhow!(e))?.to_string();
     let parsed_hash = PasswordHash::new(&db_password).map_err(|e| anyhow::anyhow!(e))?;
 
     if argon2.verify_password(user.password.as_bytes(), &parsed_hash).is_ok() {
@@ -120,19 +120,39 @@ async fn login_user(mut req: tide::Request<PgPool>) -> tide::Result {
     Ok(res)
 }
 
-// async fn upload_file(mut req: tide::Request<PgPool>) -> tide::Result<String> {
-    // let user: User = req.body_json().await?;
-    // let pool = req.state();
-    // sqlx::query!(
-    //     "INSERT INTO users (username, password) VALUES ($1, $2)",
-    //     user.username,
-    //     user.password
-    // )
-    // .execute(pool)
-    // .await?;
-    // let form = req.body_form().await?;
-    // Ok(format!("User: {} uploaded {} files!", user.username.clone(), file_count))
-// }
+#[derive(Clone)]
+struct TempDirState {
+    tempdir: Arc<TempDir>,
+}
+
+impl TempDirState {
+    fn try_new() -> Result<Self, color_eyre::Report>{
+        Ok(Self {
+            tempdir: Arc::new(tempfile::tempdir()?),
+        })
+    }
+
+    fn path(&self) -> &Path {
+        self.tempdir.path()
+    }
+}
+
+async fn upload_file(mut req: tide::Request<PgPool>) -> tide::Result {
+    let mut body = req.body_bytes().await?;
+    let mut multipart = tide::http::Mu
+
+    let test = tide::Body::from_file(file!()).await?;
+    let pool = req.state();
+    sqlx::query!(
+        "INSERT INTO users (username, password) VALUES ($1, $2)",
+        user.username,
+        user.password
+    )
+    .execute(pool)
+    .await?;
+    let form = req.body_form().await?;
+    Ok(format!("User: {} uploaded {} files!", user.username.clone(), file_count))
+}
 
 
 
@@ -154,6 +174,7 @@ async fn main() -> Result<(), color_eyre::Report> {
     app.at("/").get(health_check);
     app.at("/register").post(register_user);
     app.at("/login").post(login_user);
+    app.at("/upload").put(upload_file);
 
     app.listen("127.0.0.1:8000").await?;
 
