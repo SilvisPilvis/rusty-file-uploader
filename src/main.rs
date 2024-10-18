@@ -31,10 +31,10 @@ struct User {
     password: String,
 }
 
-async fn health_check(_req: tide::Request<PgPool>) -> tide::Result {
-    let mut res = Response::new(200);
-    res.set_body("API Is Up");
-    Ok(res)
+async fn health_check() -> Result {
+    // let mut res = Response::new(200);
+    // res.set_body("API Is Up");
+    // Ok(res)
 }
 
 async fn register_user(mut req: tide::Request<PgPool>) -> tide::Result {
@@ -164,7 +164,7 @@ async fn upload_file(req: tide::Request<PgPool>) -> tide::Result {
 
 
 
-#[async_std::main]
+#[tokio::main]
 async fn main() -> Result<(), color_eyre::Report> {
     femme::with_level(femme::LevelFilter::Info);
     color_eyre::install()?;
@@ -175,16 +175,22 @@ async fn main() -> Result<(), color_eyre::Report> {
 
     log::info!("Connected to database");
 
-    let app = Router::new();
+    let app = Router::new()
+        .route("/", get(health_check))
+        .route("/register", post(register_user))
+        .route("/login", post(login_user))
+        .route("/upload", .post(upload_file));
     
-    app.with(tide::log::LogMiddleware::new());
+    // app.with(tide::log::LogMiddleware::new());
 
-    app.at("/").get(health_check);
-    app.at("/register").post(register_user);
-    app.at("/login").post(login_user);
-    app.at("/upload").put(upload_file);
+    // app.at("/").get(health_check);
+    // app.at("/register").post(register_user);
+    // app.at("/login").post(login_user);
+    // app.at("/upload").put(upload_file);
 
-    app.listen("127.0.0.1:8000").await?;
+    // app.listen("127.0.0.1:8000").await?;
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    axum::serve(listener, app).await.unwrap();
 
     log::info!("Write Uploaded files to tempdir and if upload fails drop tempdir to delete files and try again");
     log::info!("Or maybe just write file to upload dir and of chunk not whole then delete last chunk");
