@@ -1,10 +1,14 @@
 use color_eyre;
 use femme;
-use tide::{self, Response};
-use tide::log as log;
+use axum::{
+    routing::{get, post},
+    http::StatusCode,
+    Json, Router,
+};
+use serde::{Deserialize, Serialize};
+// use tide::log as log;
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
-use serde::{Deserialize, Serialize};
 // use serde_json;
 use argon2::{
     password_hash::{
@@ -171,7 +175,7 @@ async fn main() -> Result<(), color_eyre::Report> {
 
     log::info!("Connected to database");
 
-    let mut app = tide::with_state(pool);
+    let app = Router::new();
     
     app.with(tide::log::LogMiddleware::new());
 
