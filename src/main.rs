@@ -137,21 +137,25 @@ impl TempDirState {
     }
 }
 
-async fn upload_file(mut req: tide::Request<PgPool>) -> tide::Result {
-    let mut body = req.body_bytes().await?;
-    let mut multipart = tide::http::Mu
+async fn upload_file(req: tide::Request<PgPool>) -> tide::Result {
+    // let mut body = req.body_bytes().await?;
+    let token = req.header("Authorization").ok_or("");
 
-    let test = tide::Body::from_file(file!()).await?;
-    let pool = req.state();
-    sqlx::query!(
-        "INSERT INTO users (username, password) VALUES ($1, $2)",
-        user.username,
-        user.password
-    )
-    .execute(pool)
-    .await?;
-    let form = req.body_form().await?;
-    Ok(format!("User: {} uploaded {} files!", user.username.clone(), file_count))
+    // let test = tide::Body::from_file(file!()).await?;
+    // let pool = req.state();
+    // sqlx::query!(
+    //     "INSERT INTO users (username, password) VALUES ($1, $2)",
+    //     user.username,
+    //     user.password
+    // )
+    // .execute(pool)
+    // .await?;
+    // let form = req.body_form().await?;
+
+    let mut res = tide::Response::new(200);
+    // res.set_body(format!("User: {} uploaded {} files!", user.username.clone(), file_count));
+    res.set_body(format!("Token: {:?}", token));
+    return Ok(res);
 }
 
 
