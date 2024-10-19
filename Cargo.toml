@@ -7,12 +7,12 @@ edition = "2021"
 serde = { version = "1.0.210", features = ["derive"] }
 femme = "2.2.1"
 color-eyre = "0.6.3"
-sqlx = { version = "0.8.2", features = ["runtime-async-std-native-tls", "postgres"] }
+sqlx = { version = "0.8.2", features = ["runtime-tokio-native-tls", "postgres", "macros"] }
 argon2 = "0.5.3"
-jwt = "0.16.0"
 serde_json = "1.0.128"
 hmac = "0.12.1"
 sha2 = "0.10.8"
 anyhow = "1.0.89"
 axum = { version = "0.7.7", features = ["multipart"]}
 tokio = { version = "1.40.0", features = ["full"] }
+jsonwebtoken = "9.3.0"
