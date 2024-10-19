@@ -1,14 +1,11 @@
 use color_eyre;
 use femme;
 use axum::{
-    extract::{Path, State},
-    routing::{get, post},
-    http::StatusCode,
-    Json, Router,
+    extract::{Path, State}, http::{header, HeaderMap, StatusCode}, response::{IntoResponse, Response}, routing::{get, post}, Json, Router
 };
 use serde::{Deserialize, Serialize};
 // use tide::log as log;
-use sqlx::{pool, PgPool};
+use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
 // use serde_json;
 use argon2::{
@@ -18,9 +15,7 @@ use argon2::{
     },
     Argon2
 };
-use hmac::{Hmac, Mac};
-use sha2::Sha384;
-use jsonwebtoken::{self, encode, EncodingKey, Header};
+use jsonwebtoken::{self, decode, encode, DecodingKey, EncodingKey, Header, Validation};
 
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -36,38 +31,57 @@ struct Claims {
     exp: String,
 }
 
-async fn health_check() -> Result<String, StatusCode> {
-    // let mut res = Response::new(200);
-    // res.set_body("API Is Up");
-    Ok("API Is Up".to_string())
+// Custom error type
+enum CustomError {
+    NotFound,
+    InternalServerError,
+    Ok
 }
 
-async fn register_user(State(pool): State<PgPool>, Json(user): Json<User>) -> Result<(String, StatusCode), (String, StatusCode)> {
+// Implement IntoResponse for CustomError
+// impl IntoResponse for CustomError {
+//     fn into_response(self) -> Response {
+//         let (status, error_message) = match self {
+//             CustomError::NotFound => (StatusCode::NOT_FOUND, "Not Found"),
+//             CustomError::InternalServerError => (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error"),
+//         };
+//         (status, error_message).into_response()
+//     }
+// }
 
+#[axum::debug_handler]
+async fn health_check(_req: axum::http::Request<axum::body::Body>,) -> Result<(StatusCode, String), (StatusCode, String)> {
+    // let res = Response::builder()
+    //     .status(StatusCode::OK)
+    //     .body("API Is Up".to_string())
+    //     .unwrap()?;
+    // return res;
+    // return Ok("API Is Up".to_string());
+    Ok((StatusCode::OK, "Success!".to_string()))
+}
+
+async fn register_user(State(pool): State<PgPool>, Json(user): Json<User>) -> Result<(StatusCode, String), (StatusCode, String)> {
     if user.username == "" && user.password == "" {
-        Err(("Username or Password empty".to_string(), StatusCode::BAD_REQUEST));
+        return Err((StatusCode::BAD_REQUEST, "Username or Password empty".to_string()));
     }
 
     let password = user.password.as_bytes();
     let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
-    let password_hash = argon2.hash_password(password, &salt).map_err(|e| ((e.to_string(), StatusCode::INTERNAL_SERVER_ERROR)))?.to_string();
+    let password_hash = argon2.hash_password(password, &salt).map_err(|e| ((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())))?.to_string();
 
     sqlx::query!(
         "INSERT INTO users (username, password) VALUES ($1, $2)",
         user.username,
         password_hash
     )
-    .execute(pool)
-    .await?;
+    .execute(&pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e.to_string())));
 
     // let message = format!("User: {} registered!", user.username.clone());
     // log::info!("{message}");
 
-    // let claims = serde_json::json!({
-    //     "username": user.username,
-    //     "exp": None, // token doesn't expire
-    // });
     let claims = Claims {
         id: 0,
         username: user.username,
@@ -78,60 +92,72 @@ async fn register_user(State(pool): State<PgPool>, Json(user): Json<User>) -> Re
         Ok(tok) => tok,
         Err(e) => {
             eprintln!("Error generating token {}", e);
-            return Err(("Error generating token".to_string(), StatusCode::INTERNAL_SERVER_ERROR));
+            return Err((StatusCode::INTERNAL_SERVER_ERROR, "Error generating token".to_string()));
         }
     };
 
-
-
-    return Ok((token, StatusCode::OK));
+    return Ok((StatusCode::OK, token));
 }
 
-// async fn login_user(mut req: tide::Request<PgPool>) -> tide::Result {
-//     let user: User = req.body_json().await?;
-//     let pool = req.state();
 
-//     let row = sqlx::query!(
-//         "SELECT password FROM users WHERE username = $1;",
-//         user.username
-//     )
-//     .fetch_one(pool)
-//     .await?;
+async fn login_user(State(pool): State<PgPool>, Json(user): Json<User>) -> Result<(StatusCode, String), (StatusCode, String)> {
+    // if let Some(auth_header) = headers.get("Authorization") {
+    //     if let Ok(auth_header_str) = auth_header.to_str() {
+    //         if auth_header_str.starts_with("Bearer") {
+    //             let token = auth_header_str.trim_start_matches("Bearer ").to_string();
 
-//     let db_password: String= row.password.unwrap();
-//     let message = format!("Password is: {db_password}");
-//     log::info!("{message}");
-//     if db_password == "" || db_password == "null" {
-//         let mut res = tide::Response::new(400);
-//         res.set_body("User is not registered");
-//         return Ok(res)
-//     }
+    //             match decode::<Claims>(&token, &DecodingKey::from_secret("use-stringfrom-dot-env-here".as_ref()), &Validation::default()) {
+    //                 Ok(_) => {
+    //                     return Ok(("return this if user logged in".to_string(), StatusCode::OK));
+    //                 },
+    //                 Err(e) => {
+    //                     eprintln!("Error generating token {}", e);
+    //                     return Err(("Error generating token".to_string(), StatusCode::INTERNAL_SERVER_ERROR));
+    //                 }
+    //             }
+    //         }
+    //     }
+    // }
 
-//     let argon2 = Argon2::default();
-//     let parsed_hash = PasswordHash::new(&db_password).map_err(|e| anyhow::anyhow!(e))?;
+    let row = sqlx::query!(
+        "SELECT password FROM users WHERE username = $1;",
+        user.username
+    )
+    .fetch_one(&pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, "Database error: User Not Found".to_string()));
 
-//     if argon2.verify_password(user.password.as_bytes(), &parsed_hash).is_ok() {
-//         let token_key: Hmac<Sha384> = Hmac::new_from_slice(b"use-stringfrom-dot-env-here")?;
-//         let header = Header {
-//             algorithm: AlgorithmType::Hs384,
-//             ..Default::default()
-//         };
-//         let mut claims = BTreeMap::new();
-//         claims.insert("username", user.username);
-//         claims.insert("exp", "".to_string());
+    let db_password: String = row?.password.unwrap();
+    let message = format!("Password is: {db_password}");
+    // log::info!("{message}");
+
+    if db_password == "" || db_password == "null" {
+        return Err((StatusCode::BAD_REQUEST, "User is not registered".to_string()))
+    }
+
+    let argon2 = Argon2::default();
+    let parsed_hash = PasswordHash::new(&db_password).map_err(|e| ((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())))?;
+
+    if argon2.verify_password(user.password.as_bytes(), &parsed_hash).is_ok() {
+        let claims = Claims {
+            id: 0,
+            username: user.username,
+            exp: "".to_string()
+        };
+
+        let token = match encode(&Header::default(), &claims, &EncodingKey::from_secret("use-stringfrom-dot-env-here".as_ref())) {
+            Ok(tok) => tok,
+            Err(e) => {
+                eprintln!("Error generating token {}", e);
+                return Err((StatusCode::INTERNAL_SERVER_ERROR, "Error generating token".to_string()));
+            }
+        };
     
-//         let token = Token::new(header, claims).sign_with_key(&token_key)?;
+        return Ok((StatusCode::OK, token));
+    }
 
-//         let mut res = tide::Response::new(200);
-//         res.set_body("Login successful");
-//         res.append_header("Authorization", format!("Bearer {}", token.as_str()));
-
-//         return Ok(res);
-//     }
-//     let mut res = tide::Response::new(400);
-//     res.set_body("Invalid Username or Password");
-//     Ok(res)
-// }
+    Err((StatusCode::INTERNAL_SERVER_ERROR, "Error loging in".to_string()))
+}
 
 // #[derive(Clone)]
 // struct TempDirState {
@@ -184,11 +210,12 @@ async fn main() -> Result<(), color_eyre::Report> {
 
     // log::info!("Connected to database");
 
+    
     let app = Router::new()
         .route("/", get(health_check))
         .route("/register", post(register_user))
         .route("/login", post(login_user))
-        .route("/upload", .post(upload_file))
+        // .route("/upload", post(upload_file))
         .with_state(pool);
     
     // app.with(tide::log::LogMiddleware::new());
@@ -199,7 +226,7 @@ async fn main() -> Result<(), color_eyre::Report> {
     // app.at("/upload").put(upload_file);
 
     // app.listen("127.0.0.1:8000").await?;
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:3000").await.unwrap();
     axum::serve(listener, app).await.unwrap();
 
     // log::info!("Write Uploaded files to tempdir and if upload fails drop tempdir to delete files and try again");
