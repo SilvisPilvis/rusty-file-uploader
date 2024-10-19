@@ -1,10 +1,9 @@
 use color_eyre;
 use femme;
 use axum::{
-    extract::{Path, State}, http::{header, HeaderMap, StatusCode}, response::{IntoResponse, Response}, routing::{get, post}, Json, Router
+    extract::{Path, State}, http::{header, HeaderMap, StatusCode}, response::{IntoResponse, Response}, routing::{get, post}, Json, Router,
 };
 use serde::{Deserialize, Serialize};
-// use tide::log as log;
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
 // use serde_json;
@@ -16,6 +15,8 @@ use argon2::{
     Argon2
 };
 use jsonwebtoken::{self, decode, encode, DecodingKey, EncodingKey, Header, Validation};
+use tower_http::trace::{self, TraceLayer};
+use tracing::Level;
 
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -79,8 +80,8 @@ async fn register_user(State(pool): State<PgPool>, Json(user): Json<User>) -> Re
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e.to_string())));
 
-    // let message = format!("User: {} registered!", user.username.clone());
-    // log::info!("{message}");
+    let message = format!("User: {} registered!", user.username.clone());
+    tracing::info!("{message}");
 
     let claims = Claims {
         id: 0,
@@ -128,8 +129,6 @@ async fn login_user(State(pool): State<PgPool>, Json(user): Json<User>) -> Resul
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, "Database error: User Not Found".to_string()));
 
     let db_password: String = row?.password.unwrap();
-    let message = format!("Password is: {db_password}");
-    // log::info!("{message}");
 
     if db_password == "" || db_password == "null" {
         return Err((StatusCode::BAD_REQUEST, "User is not registered".to_string()))
@@ -153,6 +152,9 @@ async fn login_user(State(pool): State<PgPool>, Json(user): Json<User>) -> Resul
             }
         };
     
+        // let message = format!("User {} logged in.", user.username.to_string());
+        let message = "User logged in.".to_string();
+        tracing::info!("{message}");
         return Ok((StatusCode::OK, token));
     }
 
@@ -201,14 +203,18 @@ async fn login_user(State(pool): State<PgPool>, Json(user): Json<User>) -> Resul
 
 #[tokio::main]
 async fn main() -> Result<(), color_eyre::Report> {
-    femme::with_level(femme::LevelFilter::Info);
     color_eyre::install()?;
 
     let pool = PgPoolOptions::new()
         .max_connections(5)
         .connect("postgres://postgres:postgres@localhost/postgres").await?;
 
-    // log::info!("Connected to database");
+    tracing::info!("Connected to database");
+
+    tracing_subscriber::fmt()
+        .with_target(false)
+        .compact()
+        .init();
 
     
     let app = Router::new()
@@ -216,7 +222,14 @@ async fn main() -> Result<(), color_eyre::Report> {
         .route("/register", post(register_user))
         .route("/login", post(login_user))
         // .route("/upload", post(upload_file))
-        .with_state(pool);
+        .with_state(pool)
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(trace::DefaultMakeSpan::new()
+                    .level(Level::INFO))
+                .on_response(trace::DefaultOnResponse::new()
+                    .level(Level::INFO)),
+        );
     
     // app.with(tide::log::LogMiddleware::new());
 
@@ -231,7 +244,7 @@ async fn main() -> Result<(), color_eyre::Report> {
 
     // log::info!("Write Uploaded files to tempdir and if upload fails drop tempdir to delete files and try again");
     // log::info!("Or maybe just write file to upload dir and of chunk not whole then delete last chunk");
-    // log::info!("Frontend loadingbag chunk  number as progress");
+    // log::info!("Frontend loadingbar chunk number as progress");
 
     Ok(())
 }
