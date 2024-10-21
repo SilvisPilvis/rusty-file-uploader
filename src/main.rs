@@ -1,7 +1,6 @@
 use color_eyre;
-use femme;
 use axum::{
-    extract::{Path, State}, http::{header, HeaderMap, StatusCode}, response::{IntoResponse, Response}, routing::{get, post}, Json, Router,
+    extract::{Path, State}, http::{HeaderMap, StatusCode}, routing::{get, post}, Json, Router,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -29,7 +28,7 @@ struct User {
 struct Claims {
     id: u64,
     username: String,
-    exp: String,
+    exp: usize,
 }
 
 // Custom error type
@@ -86,13 +85,13 @@ async fn register_user(State(pool): State<PgPool>, Json(user): Json<User>) -> Re
     let claims = Claims {
         id: 0,
         username: user.username,
-        exp: "".to_string()
+        exp: (chrono::Utc::now() + chrono::Duration::hours(24)).timestamp() as usize
     };
 
     let token = match encode(&Header::default(), &claims, &EncodingKey::from_secret("use-stringfrom-dot-env-here".as_ref())) {
         Ok(tok) => tok,
         Err(e) => {
-            eprintln!("Error generating token {}", e);
+            tracing::error!("Error generating token {}", e);
             return Err((StatusCode::INTERNAL_SERVER_ERROR, "Error generating token".to_string()));
         }
     };
@@ -102,31 +101,13 @@ async fn register_user(State(pool): State<PgPool>, Json(user): Json<User>) -> Re
 
 
 async fn login_user(State(pool): State<PgPool>, Json(user): Json<User>) -> Result<(StatusCode, String), (StatusCode, String)> {
-    // if let Some(auth_header) = headers.get("Authorization") {
-    //     if let Ok(auth_header_str) = auth_header.to_str() {
-    //         if auth_header_str.starts_with("Bearer") {
-    //             let token = auth_header_str.trim_start_matches("Bearer ").to_string();
-
-    //             match decode::<Claims>(&token, &DecodingKey::from_secret("use-stringfrom-dot-env-here".as_ref()), &Validation::default()) {
-    //                 Ok(_) => {
-    //                     return Ok(("return this if user logged in".to_string(), StatusCode::OK));
-    //                 },
-    //                 Err(e) => {
-    //                     eprintln!("Error generating token {}", e);
-    //                     return Err(("Error generating token".to_string(), StatusCode::INTERNAL_SERVER_ERROR));
-    //                 }
-    //             }
-    //         }
-    //     }
-    // }
-
     let row = sqlx::query!(
         "SELECT password FROM users WHERE username = $1;",
         user.username
     )
     .fetch_one(&pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, "Database error: User Not Found".to_string()));
+    .map_err(|_e| (StatusCode::INTERNAL_SERVER_ERROR, "Database error: User Not Found".to_string()));
 
     let db_password: String = row?.password.unwrap();
 
@@ -138,22 +119,27 @@ async fn login_user(State(pool): State<PgPool>, Json(user): Json<User>) -> Resul
     let parsed_hash = PasswordHash::new(&db_password).map_err(|e| ((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())))?;
 
     if argon2.verify_password(user.password.as_bytes(), &parsed_hash).is_ok() {
+        // let claims = Claims {
+        //     id: 0,
+        //     username: user.username,
+        //     exp: "None".to_string()
+        // };
         let claims = Claims {
             id: 0,
-            username: user.username,
-            exp: "".to_string()
+            username: user.username.clone(),
+            exp: (chrono::Utc::now() + chrono::Duration::hours(24)).timestamp() as usize
         };
 
         let token = match encode(&Header::default(), &claims, &EncodingKey::from_secret("use-stringfrom-dot-env-here".as_ref())) {
             Ok(tok) => tok,
             Err(e) => {
-                eprintln!("Error generating token {}", e);
+                tracing::error!("Error generating token {}", e);
                 return Err((StatusCode::INTERNAL_SERVER_ERROR, "Error generating token".to_string()));
             }
         };
     
-        // let message = format!("User {} logged in.", user.username.to_string());
-        let message = "User logged in.".to_string();
+        let message = format!("User {} logged in.", user.username);
+        // let message = "User logged in.".to_string();
         tracing::info!("{message}");
         return Ok((StatusCode::OK, token));
     }
@@ -178,26 +164,43 @@ async fn login_user(State(pool): State<PgPool>, Json(user): Json<User>) -> Resul
 //     }
 // }
 
-// async fn upload_file(req: tide::Request<PgPool>) -> tide::Result {
-//     // let mut body = req.body_bytes().await?;
-//     let token = req.header("Authorization").ok_or("");
+async fn upload_file(headers: HeaderMap) -> Result<(StatusCode, String), (StatusCode, String)> {
+    let mut token: String = "".to_string();
+    if let Some(auth_header) = headers.get("Authorization") {
+        if let Ok(auth_header_str) = auth_header.to_str() {
+            if auth_header_str.starts_with("Bearer") {
+                token = auth_header_str.trim_start_matches("Bearer ").to_string();
+                // tracing::info!("Token: {}", token);
+                match decode::<Claims>(&token, &DecodingKey::from_secret("use-stringfrom-dot-env-here".as_ref()), &Validation::default()) {
+                    Ok(_) => {
+                        return Ok((StatusCode::OK, "return this if user logged in".to_string()));
+                    },
+                    Err(e) => {
+                        tracing::error!("Error generating token {}", e);
+                        return Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()));
+                    }
+                }
+            }
+        }
+    }
 
-//     // let test = tide::Body::from_file(file!()).await?;
-//     // let pool = req.state();
-//     // sqlx::query!(
-//     //     "INSERT INTO users (username, password) VALUES ($1, $2)",
-//     //     user.username,
-//     //     user.password
-//     // )
-//     // .execute(pool)
-//     // .await?;
-//     // let form = req.body_form().await?;
+    // let mut body = req.body_bytes().await?;
+    
 
-//     let mut res = tide::Response::new(200);
-//     // res.set_body(format!("User: {} uploaded {} files!", user.username.clone(), file_count));
-//     res.set_body(format!("Token: {:?}", token));
-//     return Ok(res);
-// }
+    // let test = tide::Body::from_file(file!()).await?;
+    // let pool = req.state();
+    // sqlx::query!(
+    //     "INSERT INTO users (username, password) VALUES ($1, $2)",
+    //     user.username,
+    //     user.password
+    // )
+    // .execute(pool)
+    // .await?;
+    // let form = req.body_form().await?;
+    // res.set_body(format!("User: {} uploaded {} files!", user.username.clone(), file_count));
+
+    return Ok((StatusCode::OK, format!("request token: {}", token)));
+}
 
 
 
@@ -221,7 +224,7 @@ async fn main() -> Result<(), color_eyre::Report> {
         .route("/", get(health_check))
         .route("/register", post(register_user))
         .route("/login", post(login_user))
-        // .route("/upload", post(upload_file))
+        .route("/upload", post(upload_file))
         .with_state(pool)
         .layer(
             TraceLayer::new_for_http()
