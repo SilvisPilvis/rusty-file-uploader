@@ -99,33 +99,32 @@ async fn register_user(State(pool): State<PgPool>, Json(user): Json<User>) -> Re
     return Ok((StatusCode::OK, token));
 }
 
-
 async fn login_user(State(pool): State<PgPool>, Json(user): Json<User>) -> Result<(StatusCode, String), (StatusCode, String)> {
-    let row = sqlx::query!(
-        "SELECT password FROM users WHERE username = $1;",
+    let db_user = sqlx::query!(
+        "SELECT password, id FROM users WHERE username = $1;",
         user.username
     )
     .fetch_one(&pool)
+    // .fetch_all(&pool)
+    // .fetch(&pool);
     .await
     .map_err(|_e| (StatusCode::INTERNAL_SERVER_ERROR, "Database error: User Not Found".to_string()));
 
-    let db_password: String = row?.password.unwrap();
+    // let db_password: String = row?.password.unwrap();
+    // let db_id = row?.id as u64;
+    let (db_password, db_id) = (db_user?.password, db_user.unwrap().id);
+    // let  = db_user.unwrap().id as u64;
 
-    if db_password == "" || db_password == "null" {
+    if db_password.clone().unwrap().to_string() == "" || db_password.clone().unwrap().to_string() == "null" {
         return Err((StatusCode::BAD_REQUEST, "User is not registered".to_string()))
     }
 
     let argon2 = Argon2::default();
-    let parsed_hash = PasswordHash::new(&db_password).map_err(|e| ((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())))?;
+    let parsed_hash = PasswordHash::new(&db_password.unwrap()).map_err(|e| ((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())))?;
 
     if argon2.verify_password(user.password.as_bytes(), &parsed_hash).is_ok() {
-        // let claims = Claims {
-        //     id: 0,
-        //     username: user.username,
-        //     exp: "None".to_string()
-        // };
         let claims = Claims {
-            id: 0,
+            id: db_id as u64,
             username: user.username.clone(),
             exp: (chrono::Utc::now() + chrono::Duration::hours(24)).timestamp() as usize
         };
