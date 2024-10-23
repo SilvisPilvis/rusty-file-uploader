@@ -18,9 +18,9 @@ use tower_http::trace::{self, TraceLayer};
 use tracing::Level;
 
 
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, sqlx::FromRow)]
 struct User {
-    id: i32,
+    // id: i32,
     username: String,
     password: String,
 }
@@ -32,32 +32,8 @@ struct Claims {
     exp: usize,
 }
 
-// Custom error type
-enum CustomError {
-    NotFound,
-    InternalServerError,
-    Ok
-}
-
-// Implement IntoResponse for CustomError
-// impl IntoResponse for CustomError {
-//     fn into_response(self) -> Response {
-//         let (status, error_message) = match self {
-//             CustomError::NotFound => (StatusCode::NOT_FOUND, "Not Found"),
-//             CustomError::InternalServerError => (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error"),
-//         };
-//         (status, error_message).into_response()
-//     }
-// }
-
 #[axum::debug_handler]
 async fn health_check(_req: axum::http::Request<axum::body::Body>,) -> Result<(StatusCode, String), (StatusCode, String)> {
-    // let res = Response::builder()
-    //     .status(StatusCode::OK)
-    //     .body("API Is Up".to_string())
-    //     .unwrap()?;
-    // return res;
-    // return Ok("API Is Up".to_string());
     Ok((StatusCode::OK, "Success!".to_string()))
 }
 
@@ -100,34 +76,32 @@ async fn register_user(State(pool): State<PgPool>, Json(user): Json<User>) -> Re
     return Ok((StatusCode::OK, token));
 }
 
-async fn login_user(State(pool): State<PgPool>, Json(user): Json<User>) -> Result<(StatusCode, String), (StatusCode, String)> {
-    let db_user = sqlx::query_as!(
-        User,
-        "SELECT password, id FROM users WHERE username = $1;",
-        user.username
+async fn login_user(State(pool): State<PgPool>, Json(credentials): Json<User>) -> Result<(StatusCode, String), (StatusCode, String)> {
+    let user = sqlx::query!(
+        "SELECT id, password FROM users WHERE username = $1",
+        credentials.username
     )
-    .fetch_one(&pool)
-    // .fetch_all(&pool)
-    // .fetch(&pool);
+    .fetch_optional(&pool)
     .await
-    .map_err(|_e| (StatusCode::INTERNAL_SERVER_ERROR, "Database error: User Not Found".to_string()));
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Database error: {}", e),
+        )
+    })?;
 
-    // let db_password: String = row?.password.unwrap();
-    // let db_id = row?.id as u64;
-    // let (db_password, db_id) = (db_user?.password, db_user.unwrap().id);
-    // let  = db_user.unwrap().id as u64;
-
-    if db_user?.username == "" || db_user?.password == "null" {
-        return Err((StatusCode::BAD_REQUEST, "User is not registered".to_string()))
-    }
+    let user = user.ok_or((StatusCode::UNAUTHORIZED, "Invalid credentials".to_string()))?;
+    let password = user.password.unwrap();
+    let id = user.id;
 
     let argon2 = Argon2::default();
-    let parsed_hash = PasswordHash::new(&db_user?.password).map_err(|e| ((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())))?;
+    let parsed_hash = PasswordHash::new(&password)
+    .map_err(|e| ((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())))?;
 
-    if argon2.verify_password(user.password.as_bytes(), &parsed_hash).is_ok() {
+    if argon2.verify_password(credentials.password.as_bytes(), &parsed_hash).is_ok() {
         let claims = Claims {
-            id: db_user?.id,
-            username: user.username.clone(),
+            id: id,
+            username: credentials.username.clone(),
             exp: (chrono::Utc::now() + chrono::Duration::hours(24)).timestamp() as usize
         };
 
@@ -139,8 +113,7 @@ async fn login_user(State(pool): State<PgPool>, Json(user): Json<User>) -> Resul
             }
         };
     
-        let message = format!("User {} logged in.", user.username);
-        // let message = "User logged in.".to_string();
+        let message = format!("User {} logged in.", credentials.username);
         tracing::info!("{message}");
         return Ok((StatusCode::OK, token));
     }
