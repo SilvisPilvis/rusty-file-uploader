@@ -1,10 +1,11 @@
 use color_eyre;
 use axum::{
-    extract::{Path, State}, http::{HeaderMap, StatusCode}, routing::{get, post}, Json, Router,
+    extract::{State, Multipart, Path}, http::{HeaderMap, StatusCode, header}, routing::{get, post}, Json, Router, response::IntoResponse
 };
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
+use tokio::{fs::File, io::AsyncWriteExt};
 // use serde_json;
 use argon2::{
     password_hash::{
@@ -16,7 +17,7 @@ use argon2::{
 use jsonwebtoken::{self, decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use tower_http::trace::{self, TraceLayer};
 use tracing::Level;
-
+use uuid::Uuid;
 
 #[derive(Deserialize, Serialize, Clone, Debug, sqlx::FromRow)]
 struct User {
@@ -30,6 +31,11 @@ struct Claims {
     id: i32,
     username: String,
     exp: usize,
+}
+
+#[derive(Serialize)]
+struct UploadResponse {
+    file_url: String,
 }
 
 #[axum::debug_handler]
@@ -150,7 +156,7 @@ async fn login_user(State(pool): State<PgPool>, Json(credentials): Json<User>) -
 //     }
 // }
 
-async fn upload_file(headers: HeaderMap) -> Result<(StatusCode, String), (StatusCode, String)> {
+async fn upload_file(State(pool): State<PgPool>, headers: HeaderMap, mut multipart: Multipart) -> Result<(StatusCode, String), (StatusCode, String)> {
     let mut token: String = "".to_string();
     if let Some(auth_header) = headers.get("Authorization") {
         if let Ok(auth_header_str) = auth_header.to_str() {
@@ -159,6 +165,7 @@ async fn upload_file(headers: HeaderMap) -> Result<(StatusCode, String), (Status
                 // tracing::info!("Token: {}", token);
                 match decode::<Claims>(&token, &DecodingKey::from_secret("use-stringfrom-dot-env-here".as_ref()), &Validation::default()) {
                     Ok(_) => {
+                        // replace this with the decoded token
                         return Ok((StatusCode::OK, "return this if user logged in".to_string()));
                     },
                     Err(e) => {
@@ -169,6 +176,84 @@ async fn upload_file(headers: HeaderMap) -> Result<(StatusCode, String), (Status
             }
         }
     }
+
+    // Process file upload
+    if let Some(field) = multipart.next_field().await.map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            "Failed to process file upload".to_string(),
+        )
+    })? {
+        let file_name = field.file_name()
+            .ok_or((StatusCode::BAD_REQUEST, "No filename provided".to_string()))?
+            .to_string();
+        
+        let content_type = field.content_type()
+            .ok_or((StatusCode::BAD_REQUEST, "No content type provided".to_string()))?
+            .to_string();
+        
+        // Generate unique filename
+        let file_id = Uuid::new_v4();
+        let extension = std::path::Path::new(&file_name)
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .unwrap_or("bin"); // if no extension then default to .bin
+        let new_filename = format!("{}.{}", file_id, extension);
+        let upload_path = format!("uploads/{}", new_filename);
+
+        // Ensure uploads directory exists
+        tokio::fs::create_dir_all("uploads").await.map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to create upload directory".to_string(),
+            )
+        })?;
+
+        // Save file
+        let contents = field.bytes().await.map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to read file contents".to_string(),
+            )
+        })?;
+
+        let mut file = File::create(&upload_path).await.map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to create file".to_string(),
+            )
+        })?;
+
+        file.write_all(&contents).await.map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to write file".to_string(),
+            )
+        })?;
+
+        // Save file metadata to database
+        sqlx::query!(
+            "INSERT INTO files (id, filename, content_type, path) VALUES ($1, $2, $3, $4)",
+            file_id,
+            file_name,
+            content_type,
+            upload_path
+        )
+        .execute(&pool)
+        .await
+        .map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to save file metadata".to_string(),
+            )
+        })?;
+
+        Ok(Json(UploadResponse {
+            file_url: format!("/files/{}", file_id),
+        }));
+    } else {
+        return Err((StatusCode::BAD_REQUEST, "No file provided".to_string()))
+    };
 
     // let mut body = req.body_bytes().await?;
     
@@ -188,6 +273,42 @@ async fn upload_file(headers: HeaderMap) -> Result<(StatusCode, String), (Status
     return Ok((StatusCode::OK, format!("request token: {}", token)));
 }
 
+async fn get_file_by_id(
+    State(pool): State<PgPool>,
+    Path(file_id): Path<Uuid>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    // 1. Get file metadata from database using ID
+    let file_meta = sqlx::query!(
+        "SELECT filename, content_type, path FROM files WHERE id = $1",
+        file_id
+    )
+    .fetch_optional(&pool)
+    .await
+    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string()))?
+    .ok_or((StatusCode::NOT_FOUND, "File not found".to_string()))?;
+
+    // 2. Read file contents
+    let mut file = File::open(&file_meta.path)
+        .await
+        .map_err(|_| (StatusCode::NOT_FOUND, "File not found".to_string()))?;
+
+    let mut contents = Vec::new();
+    file.read_to_end(&mut contents)
+        .await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Failed to read file".to_string()))?;
+
+    // 3. Return file with proper headers
+    Ok((
+        [
+            (header::CONTENT_TYPE, file_meta.content_type),
+            (
+                header::CONTENT_DISPOSITION,
+                format!("attachment; filename=\"{}\"", file_meta.filename),
+            ),
+        ],
+        contents,
+    ))
+}
 
 
 #[tokio::main]

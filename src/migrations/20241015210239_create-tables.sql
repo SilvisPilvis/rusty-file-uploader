@@ -17,5 +17,7 @@ CREATE TABLE stores (
 
 CREATE TABLE files (
     id SERIAL PRIMARY KEY,
-    name VARCHAR(256)
+    name VARCHAR(256),
+    content_type VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
