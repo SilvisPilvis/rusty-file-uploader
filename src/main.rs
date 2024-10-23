@@ -20,13 +20,14 @@ use tracing::Level;
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 struct User {
+    id: i32,
     username: String,
     password: String,
 }
 
 #[derive(Serialize, Deserialize)]
 struct Claims {
-    id: u64,
+    id: i32,
     username: String,
     exp: usize,
 }
@@ -100,7 +101,8 @@ async fn register_user(State(pool): State<PgPool>, Json(user): Json<User>) -> Re
 }
 
 async fn login_user(State(pool): State<PgPool>, Json(user): Json<User>) -> Result<(StatusCode, String), (StatusCode, String)> {
-    let db_user = sqlx::query!(
+    let db_user = sqlx::query_as!(
+        User,
         "SELECT password, id FROM users WHERE username = $1;",
         user.username
     )
@@ -112,19 +114,19 @@ async fn login_user(State(pool): State<PgPool>, Json(user): Json<User>) -> Resul
 
     // let db_password: String = row?.password.unwrap();
     // let db_id = row?.id as u64;
-    let (db_password, db_id) = (db_user?.password, db_user.unwrap().id);
+    // let (db_password, db_id) = (db_user?.password, db_user.unwrap().id);
     // let  = db_user.unwrap().id as u64;
 
-    if db_password.clone().unwrap().to_string() == "" || db_password.clone().unwrap().to_string() == "null" {
+    if db_user?.username == "" || db_user?.password == "null" {
         return Err((StatusCode::BAD_REQUEST, "User is not registered".to_string()))
     }
 
     let argon2 = Argon2::default();
-    let parsed_hash = PasswordHash::new(&db_password.unwrap()).map_err(|e| ((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())))?;
+    let parsed_hash = PasswordHash::new(&db_user?.password).map_err(|e| ((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())))?;
 
     if argon2.verify_password(user.password.as_bytes(), &parsed_hash).is_ok() {
         let claims = Claims {
-            id: db_id as u64,
+            id: db_user?.id,
             username: user.username.clone(),
             exp: (chrono::Utc::now() + chrono::Duration::hours(24)).timestamp() as usize
         };

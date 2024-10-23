@@ -11,7 +11,8 @@ CREATE TABLE users (
 CREATE TABLE stores (
     id SERIAL PRIMARY KEY,
     name VARCHAR(30),
-    userId VARCHAR(30)
+    userId VARCHAR(30),
+    cover INT
 );
 
 CREATE TABLE files (
