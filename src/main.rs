@@ -47,20 +47,32 @@ async fn register_user(State(pool): State<PgPool>, Json(user): Json<User>) -> Re
     let argon2 = Argon2::default();
     let password_hash = argon2.hash_password(password, &salt).map_err(|e| ((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())))?.to_string();
 
-    sqlx::query!(
-        "INSERT INTO users (username, password) VALUES ($1, $2)",
+    let result = sqlx::query!(
+        "INSERT INTO users (username, password) VALUES ($1, $2) RETURNING id",
         user.username,
         password_hash
     )
-    .execute(&pool)
+    .fetch_one(&pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e.to_string())));
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e.to_string())))
+    .map(|record| record.id);
+
+    let inserted_id = match result {
+        Ok(record) => record,
+        Err(e) => return Err(e)
+    };
+
+    // .execute(&pool)
+    // .await
+    // .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e.to_string())));
+
+    tracing::info!("New user id is: {inserted_id}");
 
     let message = format!("User: {} registered!", user.username.clone());
     tracing::info!("{message}");
 
     let claims = Claims {
-        id: 0,
+        id: inserted_id,
         username: user.username,
         exp: (chrono::Utc::now() + chrono::Duration::hours(24)).timestamp() as usize
     };
