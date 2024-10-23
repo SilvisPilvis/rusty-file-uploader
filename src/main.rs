@@ -16,8 +16,11 @@ use argon2::{
 };
 use jsonwebtoken::{self, decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use tower_http::trace::{self, TraceLayer};
+use tower::ServiceBuilder;
 use tracing::Level;
 use uuid::Uuid;
+
+mod middleware;
 
 #[derive(Deserialize, Serialize, Clone, Debug, sqlx::FromRow)]
 struct User {
@@ -334,11 +337,15 @@ async fn main() -> Result<(), color_eyre::Report> {
         .route("/upload", post(upload_file))
         .with_state(pool)
         .layer(
-            TraceLayer::new_for_http()
+            ServiceBuilder::new()
+            .layer(
+                TraceLayer::new_for_http()
                 .make_span_with(trace::DefaultMakeSpan::new()
-                    .level(Level::INFO))
+                .level(Level::INFO))
                 .on_response(trace::DefaultOnResponse::new()
-                    .level(Level::INFO)),
+                .level(Level::INFO))
+            )
+
         );
     
     // app.with(tide::log::LogMiddleware::new());

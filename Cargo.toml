@@ -14,6 +14,7 @@ axum = { version = "0.7.7", features = ["multipart", "macros"]}
 tokio = { version = "1.40.0", features = ["full"] }
 jsonwebtoken = "9.3.0"
 tower-http = { version = "0.6.1", features = ["trace"]}
+tower = { version = "0.5.1", features = ["tracing"] }
 tracing = "0.1.40"
 tracing-subscriber = "0.3.18"
 chrono = "0.4.38"
