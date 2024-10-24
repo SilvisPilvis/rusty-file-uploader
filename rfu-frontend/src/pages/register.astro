@@ -1,0 +1,21 @@
+---
+// server code goes here
+---
+
+<main class="h-screen grid place-items-center bg-background text-text">
+    <form action="/login" method="post" class="flex flex-col justify-center items-center gap-4 outline outline-2 outline-rose-800 p-4 rounded-md">
+        <label class="flex flex-col">
+            Username:
+            <input type="text" name="username" id="" class="bg-primary p-4 rounded-md">
+        </label>
+        <label class="flex flex-col">
+            Password:
+            <input type="password" name="password" id="" class="bg-primary p-4 rounded-md">
+        </label>
+        <label class="flex flex-col">
+            Repeat password:
+            <input type="password" name="repeat" id="" class="bg-primary p-4 rounded-md">
+        </label>
+        <button class="bg-secondary px-24 py-4 rounded-md">Register</button>
+    </form>
+</main>

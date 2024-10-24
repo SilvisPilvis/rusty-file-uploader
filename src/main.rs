@@ -167,12 +167,13 @@ async fn upload_file(State(pool): State<PgPool>, headers: HeaderMap, mut multipa
                 token = auth_header_str.trim_start_matches("Bearer ").to_string();
                 // tracing::info!("Token: {}", token);
                 match decode::<Claims>(&token, &DecodingKey::from_secret("use-stringfrom-dot-env-here".as_ref()), &Validation::default()) {
-                    Ok(_) => {
+                    Ok(decoded) => {
                         // replace this with the decoded token
-                        return Ok((StatusCode::OK, "return this if user logged in".to_string()));
+                        // return Ok((StatusCode::OK, "return this if user logged in".to_string()));
+                        token = Some(decoded)
                     },
                     Err(e) => {
-                        tracing::error!("Error generating token {}", e);
+                        tracing::error!("Error decoding token: {}", e);
                         return Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()));
                     }
                 }
@@ -254,24 +255,11 @@ async fn upload_file(State(pool): State<PgPool>, headers: HeaderMap, mut multipa
         Ok(Json(UploadResponse {
             file_url: format!("/files/{}", file_id),
         }));
+
+        tracing::info!("{} uploaded {} files")
     } else {
         return Err((StatusCode::BAD_REQUEST, "No file provided".to_string()))
     };
-
-    // let mut body = req.body_bytes().await?;
-    
-
-    // let test = tide::Body::from_file(file!()).await?;
-    // let pool = req.state();
-    // sqlx::query!(
-    //     "INSERT INTO users (username, password) VALUES ($1, $2)",
-    //     user.username,
-    //     user.password
-    // )
-    // .execute(pool)
-    // .await?;
-    // let form = req.body_form().await?;
-    // res.set_body(format!("User: {} uploaded {} files!", user.username.clone(), file_count));
 
     return Ok((StatusCode::OK, format!("request token: {}", token)));
 }
