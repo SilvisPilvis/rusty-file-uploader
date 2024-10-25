@@ -37,10 +37,10 @@ struct Claims {
     exp: usize,
 }
 
-#[derive(serde::Serialize)]
-struct JsonError {
-    error: String,
-}
+// #[derive(serde::Serialize)]
+// struct JsonError {
+//     error: String,
+// }
 
 #[axum::debug_handler]
 async fn health_check(_req: axum::http::Request<axum::body::Body>,) -> Result<(StatusCode, String), (StatusCode, String)> {

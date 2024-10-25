@@ -9,11 +9,6 @@ struct Claims {
     exp: usize,
 }
 
-#[derive(serde::Serialize)]
-struct JsonError {
-    error: String,
-}
-
 pub async fn authorization_middleware(mut req: Request, next: Next) -> Result<impl IntoResponse, (StatusCode, String)> {
     let token = req
         .headers()
