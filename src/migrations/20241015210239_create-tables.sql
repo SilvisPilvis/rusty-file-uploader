@@ -1,6 +1,6 @@
--- Add migration script here
+-- Create all tables
 
-DROP TABLE IF EXISTS users, stores, files;
+DROP TABLE IF EXISTS users, stores, files, user_store, file_store;
 
 CREATE TABLE users (
     id SERIAL PRIMARY KEY,
@@ -11,8 +11,9 @@ CREATE TABLE users (
 CREATE TABLE stores (
     id SERIAL PRIMARY KEY,
     name VARCHAR(30),
-    userId VARCHAR(30),
+    -- userId INTEGER NOT NULL,
     cover INT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE files (
@@ -28,17 +29,17 @@ CREATE TABLE user_store (
     userId INTEGER NOT NULL,
     storeId INTEGER NOT NULL,
     FOREIGN KEY(userId)
-    REFERENCES users(id)
+    REFERENCES users(id),
     FOREIGN KEY(storeId)
     REFERENCES stores(id)
-)
+);
 
 CREATE TABLE file_store (
     id SERIAL PRIMARY KEY,
     fileId INTEGER NOT NULL,
     storeId INTEGER NOT NULL,
     FOREIGN KEY(fileId)
-    REFERENCES files(id)
+    REFERENCES files(id),
     FOREIGN KEY(storeId)
     REFERENCES stores(id)
 );

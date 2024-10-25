@@ -5,7 +5,8 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
-use tokio::{fs::File, io::AsyncWriteExt};
+use tokio::{fs::File, io::AsyncWriteExt, io::AsyncReadExt};
+// use tokio::io::AsyncReadExt;
 // use serde_json;
 use argon2::{
     password_hash::{
@@ -29,16 +30,16 @@ struct User {
     password: String,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 struct Claims {
     id: i32,
     username: String,
     exp: usize,
 }
 
-#[derive(Serialize)]
-struct UploadResponse {
-    file_url: String,
+#[derive(serde::Serialize)]
+struct JsonError {
+    error: String,
 }
 
 #[axum::debug_handler]
@@ -70,10 +71,6 @@ async fn register_user(State(pool): State<PgPool>, Json(user): Json<User>) -> Re
         Ok(record) => record,
         Err(e) => return Err(e)
     };
-
-    // .execute(&pool)
-    // .await
-    // .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e.to_string())));
 
     tracing::info!("New user id is: {inserted_id}");
 
@@ -142,45 +139,7 @@ async fn login_user(State(pool): State<PgPool>, Json(credentials): Json<User>) -
     Err((StatusCode::INTERNAL_SERVER_ERROR, "Error loging in".to_string()))
 }
 
-// #[derive(Clone)]
-// struct TempDirState {
-//     tempdir: Arc<TempDir>,
-// }
-
-// impl TempDirState {
-//     fn try_new() -> Result<Self, color_eyre::Report>{
-//         Ok(Self {
-//             tempdir: Arc::new(tempfile::tempdir()?),
-//         })
-//     }
-
-//     fn path(&self) -> &Path {
-//         self.tempdir.path()
-//     }
-// }
-
 async fn upload_file(State(pool): State<PgPool>, headers: HeaderMap, mut multipart: Multipart) -> Result<(StatusCode, String), (StatusCode, String)> {
-    let mut token: String = "".to_string();
-    if let Some(auth_header) = headers.get("Authorization") {
-        if let Ok(auth_header_str) = auth_header.to_str() {
-            if auth_header_str.starts_with("Bearer") {
-                token = auth_header_str.trim_start_matches("Bearer ").to_string();
-                // tracing::info!("Token: {}", token);
-                match decode::<Claims>(&token, &DecodingKey::from_secret("use-stringfrom-dot-env-here".as_ref()), &Validation::default()) {
-                    Ok(decoded) => {
-                        // replace this with the decoded token
-                        // return Ok((StatusCode::OK, "return this if user logged in".to_string()));
-                        token = Some(decoded)
-                    },
-                    Err(e) => {
-                        tracing::error!("Error decoding token: {}", e);
-                        return Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()));
-                    }
-                }
-            }
-        }
-    }
-
     // Process file upload
     if let Some(field) = multipart.next_field().await.map_err(|_| {
         (
@@ -236,12 +195,23 @@ async fn upload_file(State(pool): State<PgPool>, headers: HeaderMap, mut multipa
         })?;
 
         // Save file metadata to database
+        // sqlx::query!(
+        //     // "INSERT INTO files (id, name, content_type, path) VALUES ($1, $2, $3, $4)",
+        //     "INSERT INTO files (id, name, content_type) VALUES ($1, $2, $3)",
+        //     file_id,
+        //     file_name,
+        //     content_type,
+        //     // upload_path
+        // )
         sqlx::query!(
-            "INSERT INTO files (id, filename, content_type, path) VALUES ($1, $2, $3, $4)",
-            file_id,
-            file_name,
+            // "INSERT INTO files (id, name, content_type, path) VALUES ($1, $2, $3, $4)",
+            "INSERT INTO files (name, content_type, md5) VALUES ($1, $2, $3)",
+            // file_id,
+            new_filename,
+            // file_name,
             content_type,
-            upload_path
+            "test",
+            // upload_path
         )
         .execute(&pool)
         .await
@@ -252,25 +222,28 @@ async fn upload_file(State(pool): State<PgPool>, headers: HeaderMap, mut multipa
             )
         })?;
 
-        Ok(Json(UploadResponse {
-            file_url: format!("/files/{}", file_id),
-        }));
+        // Ok(Json(UploadResponse {
+        //     file_url: format!("/files/{}", file_id),
+        // }));
+        return Ok((StatusCode::OK, format!("/files/{}", file_id)))
 
-        tracing::info!("{} uploaded {} files")
+        // tracing::info!("{} uploaded {} files")
     } else {
-        return Err((StatusCode::BAD_REQUEST, "No file provided".to_string()))
+        return Err((StatusCode::BAD_REQUEST, "{ 'error': 'No file provided' }".to_string()))
     };
 
-    return Ok((StatusCode::OK, format!("request token: {}", token)));
+    // return Ok((StatusCode::OK, "succesfully uploaded files".to_string()));
 }
 
 async fn get_file_by_id(
     State(pool): State<PgPool>,
-    Path(file_id): Path<Uuid>,
+    // Path(file_id): Path<Uuid>,
+    Path(file_id): Path<i32>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     // 1. Get file metadata from database using ID
     let file_meta = sqlx::query!(
-        "SELECT filename, content_type, path FROM files WHERE id = $1",
+        // "SELECT name, content_type, path FROM files WHERE id = $1",
+        "SELECT name, content_type FROM files WHERE id = $1",
         file_id
     )
     .fetch_optional(&pool)
@@ -279,7 +252,8 @@ async fn get_file_by_id(
     .ok_or((StatusCode::NOT_FOUND, "File not found".to_string()))?;
 
     // 2. Read file contents
-    let mut file = File::open(&file_meta.path)
+    let uploaded_file_path = format!("/upload/{}", &file_meta.name.clone().unwrap());
+    let mut file = File::open(&uploaded_file_path)
         .await
         .map_err(|_| (StatusCode::NOT_FOUND, "File not found".to_string()))?;
 
@@ -294,7 +268,7 @@ async fn get_file_by_id(
             (header::CONTENT_TYPE, file_meta.content_type),
             (
                 header::CONTENT_DISPOSITION,
-                format!("attachment; filename=\"{}\"", file_meta.filename),
+                format!("attachment; filename=\"{}\"", file_meta.name.unwrap()),
             ),
         ],
         contents,
@@ -317,12 +291,16 @@ async fn main() -> Result<(), color_eyre::Report> {
         .compact()
         .init();
 
-    
+    let auth_routes = Router::new()
+        .route("/upload", post(upload_file))
+        .layer(ServiceBuilder::new().layer(axum::middleware::from_fn(middleware::authorization_middleware)));
+
     let app = Router::new()
         .route("/", get(health_check))
         .route("/register", post(register_user))
         .route("/login", post(login_user))
-        .route("/upload", post(upload_file))
+        .nest("", auth_routes)
+        // .route("/upload", post(upload_file))
         .with_state(pool)
         .layer(
             ServiceBuilder::new()
@@ -345,7 +323,7 @@ async fn main() -> Result<(), color_eyre::Report> {
 
     // app.listen("127.0.0.1:8000").await?;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3000").await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+    axum::serve(listener, app.into_make_service()).await.unwrap();
 
     // log::info!("Write Uploaded files to tempdir and if upload fails drop tempdir to delete files and try again");
     // log::info!("Or maybe just write file to upload dir and of chunk not whole then delete last chunk");
