@@ -1,6 +1,7 @@
 use axum::{extract::Request, middleware::Next, http::StatusCode};
 use jsonwebtoken::{encode, decode, DecodingKey, Validation, Algorithm};
 use axum::response::IntoResponse;
+use std::env;
 
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
 struct Claims {
@@ -18,7 +19,7 @@ pub async fn authorization_middleware(mut req: Request, next: Next) -> Result<im
         .ok_or((StatusCode::UNAUTHORIZED, "{ 'error': 'No authorization token provided' }".to_string()))?;
         // .ok_or((StatusCode::UNAUTHORIZED, serde_json::to_string(&JsonError{ error: "No authorization token provided".to_string()})));
 
-    let decoding_key = DecodingKey::from_secret(b"secret"); // Use your secret key here
+    let decoding_key = DecodingKey::from_secret(env::var("SECRET")?.as_ref()); // Use your secret key here
     // let validation = Validation::new(Algorithm::HS384);
     let validation = Validation::default();
 

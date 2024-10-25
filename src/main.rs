@@ -1,3 +1,5 @@
+use std::env;
+
 use color_eyre;
 use axum::{
     extract::{State, Multipart, Path}, http::{HeaderMap, StatusCode, header}, routing::{get, post}, Json, Router, response::IntoResponse
@@ -139,7 +141,7 @@ async fn login_user(State(pool): State<PgPool>, Json(credentials): Json<User>) -
     Err((StatusCode::INTERNAL_SERVER_ERROR, "Error loging in".to_string()))
 }
 
-async fn upload_file(State(pool): State<PgPool>, headers: HeaderMap, mut multipart: Multipart) -> Result<(StatusCode, String), (StatusCode, String)> {
+async fn upload_file(State(pool): State<PgPool>, mut multipart: Multipart) -> Result<(StatusCode, String), (StatusCode, String)> {
     // Process file upload
     if let Some(field) = multipart.next_field().await.map_err(|_| {
         (
@@ -231,8 +233,6 @@ async fn upload_file(State(pool): State<PgPool>, headers: HeaderMap, mut multipa
     } else {
         return Err((StatusCode::BAD_REQUEST, "{ 'error': 'No file provided' }".to_string()))
     };
-
-    // return Ok((StatusCode::OK, "succesfully uploaded files".to_string()));
 }
 
 async fn get_file_by_id(
@@ -279,10 +279,11 @@ async fn get_file_by_id(
 #[tokio::main]
 async fn main() -> Result<(), color_eyre::Report> {
     color_eyre::install()?;
+    dotenvy::dotenv()?;
 
     let pool = PgPoolOptions::new()
         .max_connections(5)
-        .connect("postgres://postgres:postgres@localhost/postgres").await?;
+        .connect(&env::var("DATABASE_URL")?).await?;
 
     tracing::info!("Connected to database");
 
@@ -293,6 +294,7 @@ async fn main() -> Result<(), color_eyre::Report> {
 
     let auth_routes = Router::new()
         .route("/upload", post(upload_file))
+        .route("/file/:file_id", get(get_file_by_id))
         .layer(ServiceBuilder::new().layer(axum::middleware::from_fn(middleware::authorization_middleware)));
 
     let app = Router::new()
@@ -313,15 +315,7 @@ async fn main() -> Result<(), color_eyre::Report> {
             )
 
         );
-    
-    // app.with(tide::log::LogMiddleware::new());
 
-    // app.at("/").get(health_check);
-    // app.at("/register").post(register_user);
-    // app.at("/login").post(login_user);
-    // app.at("/upload").put(upload_file);
-
-    // app.listen("127.0.0.1:8000").await?;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3000").await.unwrap();
     axum::serve(listener, app.into_make_service()).await.unwrap();
 
