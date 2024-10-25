@@ -39,6 +39,8 @@ struct Claims {
     exp: usize,
 }
 
+const API_PATH: &'static str = "http://127.0.0.1:3000";
+
 // #[derive(serde::Serialize)]
 // struct JsonError {
 //     error: String,
