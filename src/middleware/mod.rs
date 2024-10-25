@@ -19,7 +19,8 @@ pub async fn authorization_middleware(mut req: Request, next: Next) -> Result<im
         .ok_or((StatusCode::UNAUTHORIZED, "{ 'error': 'No authorization token provided' }".to_string()))?;
         // .ok_or((StatusCode::UNAUTHORIZED, serde_json::to_string(&JsonError{ error: "No authorization token provided".to_string()})));
 
-    let decoding_key = DecodingKey::from_secret(env::var("SECRET")?.as_ref()); // Use your secret key here
+    let secert: String = env::var("SECRET").map_err(|_e| ((StatusCode::INTERNAL_SERVER_ERROR, "failed to get secert from env".to_string())))?;
+    let decoding_key = DecodingKey::from_secret(secert.as_ref()); // Use your secret key here
     // let validation = Validation::new(Algorithm::HS384);
     let validation = Validation::default();
 

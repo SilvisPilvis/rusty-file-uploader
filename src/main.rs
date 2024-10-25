@@ -1,9 +1,9 @@
 use std::env;
-
 use color_eyre;
 use axum::{
     extract::{State, Multipart, Path}, http::{HeaderMap, StatusCode, header}, routing::{get, post}, Json, Router, response::IntoResponse
 };
+use dotenvy_macro::dotenv;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
@@ -54,6 +54,8 @@ async fn register_user(State(pool): State<PgPool>, Json(user): Json<User>) -> Re
         return Err((StatusCode::BAD_REQUEST, "Username or Password empty".to_string()));
     }
 
+    let secert: String = env::var("SECRET").map_err(|_e| ((StatusCode::INTERNAL_SERVER_ERROR, "failed to get secert from env".to_string())))?;
+
     let password = user.password.as_bytes();
     let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
@@ -85,7 +87,7 @@ async fn register_user(State(pool): State<PgPool>, Json(user): Json<User>) -> Re
         exp: (chrono::Utc::now() + chrono::Duration::hours(24)).timestamp() as usize
     };
 
-    let token = match encode(&Header::default(), &claims, &EncodingKey::from_secret("use-stringfrom-dot-env-here".as_ref())) {
+    let token = match encode(&Header::default(), &claims, &EncodingKey::from_secret(secert.as_ref())) {
         Ok(tok) => tok,
         Err(e) => {
             tracing::error!("Error generating token {}", e);
@@ -110,6 +112,8 @@ async fn login_user(State(pool): State<PgPool>, Json(credentials): Json<User>) -
         )
     })?;
 
+    let secert: String = env::var("SECRET").map_err(|_e| ((StatusCode::INTERNAL_SERVER_ERROR, "failed to get secert from env".to_string())))?;
+
     let user = user.ok_or((StatusCode::UNAUTHORIZED, "Invalid credentials".to_string()))?;
     let password = user.password.unwrap();
     let id = user.id;
@@ -125,7 +129,7 @@ async fn login_user(State(pool): State<PgPool>, Json(credentials): Json<User>) -
             exp: (chrono::Utc::now() + chrono::Duration::hours(24)).timestamp() as usize
         };
 
-        let token = match encode(&Header::default(), &claims, &EncodingKey::from_secret("use-stringfrom-dot-env-here".as_ref())) {
+        let token = match encode(&Header::default(), &claims, &EncodingKey::from_secret(secert.as_ref())) {
             Ok(tok) => tok,
             Err(e) => {
                 tracing::error!("Error generating token {}", e);
@@ -143,10 +147,11 @@ async fn login_user(State(pool): State<PgPool>, Json(credentials): Json<User>) -
 
 async fn upload_file(State(pool): State<PgPool>, mut multipart: Multipart) -> Result<(StatusCode, String), (StatusCode, String)> {
     // Process file upload
-    if let Some(field) = multipart.next_field().await.map_err(|_| {
+    if let Some(field) = multipart.next_field().await.map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
-            "Failed to process file upload".to_string(),
+            // "Failed to process file upload".to_string(),
+            format!("Failed to process file upload: {}", e).to_string(),
         )
     })? {
         let file_name = field.file_name()
@@ -275,11 +280,12 @@ async fn get_file_by_id(
     ))
 }
 
-
+// #[dotenvy::load]
 #[tokio::main]
 async fn main() -> Result<(), color_eyre::Report> {
     color_eyre::install()?;
     dotenvy::dotenv()?;
+    // dotenv!();
 
     let pool = PgPoolOptions::new()
         .max_connections(5)
