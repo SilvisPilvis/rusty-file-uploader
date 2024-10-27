@@ -24,19 +24,13 @@ use tracing::Level;
 use uuid::Uuid;
 
 mod middleware;
+pub use middleware::Claims;
 
 #[derive(Deserialize, Serialize, Clone, Debug, sqlx::FromRow)]
 struct User {
     // id: i32,
     username: String,
     password: String,
-}
-
-#[derive(serde::Serialize, serde::Deserialize, Clone)]
-struct Claims {
-    id: i32,
-    username: String,
-    exp: usize,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -153,6 +147,9 @@ async fn login_user(State(pool): State<PgPool>, Json(credentials): Json<User>) -
 }
 
 async fn upload_file(State(pool): State<PgPool>, Path(store_id): Path<i32>, mut multipart: Multipart) -> Result<(StatusCode, String), (StatusCode, String)> {
+    if store_id <= 0 {
+        return Err((StatusCode::BAD_REQUEST, "Store id must be bigger than zero".to_string()));
+    }
     // Process file upload
     if let Some(field) = multipart.next_field().await.map_err(|e| {
         (
@@ -311,7 +308,8 @@ async fn get_file_by_id(
 }
 
 #[axum::debug_handler]
-async fn create_store(State(pool): State<PgPool>, Extension(token): Extension<TokenData<Claims>>, Json(store): Json<Store>) -> Result<(StatusCode, String), (StatusCode, String)> {
+async fn create_store(Extension(claims): Extension<Claims>, State(pool): State<PgPool>, Json(store): Json<Store>) -> Result<(StatusCode, String), (StatusCode, String)> {
+
     let file_store = sqlx::query!(
         // "SELECT name, content_type, path FROM files WHERE id = $1",
         "INSERT INTO stores (name) VALUES ($1) RETURNING id",
@@ -331,7 +329,8 @@ async fn create_store(State(pool): State<PgPool>, Extension(token): Extension<To
     sqlx::query!(
         "INSERT INTO user_store (storeId, userId) VALUES ($1, $2)",
         inserted_id,
-        token.claims.id
+        // token.claims.id
+        claims.id
     )
     .execute(&pool)
     .await
@@ -342,7 +341,8 @@ async fn create_store(State(pool): State<PgPool>, Extension(token): Extension<To
         )
     })?;
 
-    return Ok((StatusCode::OK, "{'message': 'store created succesfully'}".to_string()))
+    let message = format!("store {} with id: {} created succesfully", store.name, inserted_id);
+    return Ok((StatusCode::OK, message.to_string()))
 }
 
 // #[dotenvy::load]

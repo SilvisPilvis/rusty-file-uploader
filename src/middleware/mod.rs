@@ -4,10 +4,10 @@ use axum::response::IntoResponse;
 use std::env;
 
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
-struct Claims {
-    id: i32,
-    username: String,
-    exp: usize,
+pub struct Claims {
+    pub id: i32,
+    pub username: String,
+    pub exp: usize,
 }
 
 pub async fn authorization_middleware(mut req: Request, next: Next) -> Result<impl IntoResponse, (StatusCode, String)> {
