@@ -1,7 +1,7 @@
 use std::env;
 use color_eyre;
 use axum::{
-    extract::{State, Multipart, Path}, http::{HeaderMap, StatusCode, header}, routing::{get, post}, Json, Router, response::IntoResponse
+    extract::{State, Multipart, Path, Extension}, http::{HeaderMap, StatusCode, header}, routing::{get, post}, Json, Router, response::IntoResponse
 };
 use dotenvy_macro::dotenv;
 use serde::{Deserialize, Serialize};
@@ -17,7 +17,7 @@ use argon2::{
     },
     Argon2
 };
-use jsonwebtoken::{self, decode, encode, DecodingKey, EncodingKey, Header, Validation};
+use jsonwebtoken::{self, decode, encode, DecodingKey, EncodingKey, Header, TokenData, Validation};
 use tower_http::trace::{self, TraceLayer};
 use tower::ServiceBuilder;
 use tracing::Level;
@@ -32,11 +32,16 @@ struct User {
     password: String,
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
 struct Claims {
     id: i32,
     username: String,
     exp: usize,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Store {
+    name: String,
 }
 
 const API_PATH: &'static str = "http://127.0.0.1:3000";
@@ -147,7 +152,7 @@ async fn login_user(State(pool): State<PgPool>, Json(credentials): Json<User>) -
     Err((StatusCode::INTERNAL_SERVER_ERROR, "Error loging in".to_string()))
 }
 
-async fn upload_file(State(pool): State<PgPool>, mut multipart: Multipart) -> Result<(StatusCode, String), (StatusCode, String)> {
+async fn upload_file(State(pool): State<PgPool>, Path(store_id): Path<i32>, mut multipart: Multipart) -> Result<(StatusCode, String), (StatusCode, String)> {
     // Process file upload
     if let Some(field) = multipart.next_field().await.map_err(|e| {
         (
@@ -212,9 +217,11 @@ async fn upload_file(State(pool): State<PgPool>, mut multipart: Multipart) -> Re
         //     content_type,
         //     // upload_path
         // )
-        sqlx::query!(
+         
+
+        let uploaded_file = sqlx::query!(
             // "INSERT INTO files (id, name, content_type, path) VALUES ($1, $2, $3, $4)",
-            "INSERT INTO files (name, content_type, md5) VALUES ($1, $2, $3)",
+            "INSERT INTO files (name, content_type, md5) VALUES ($1, $2, $3) RETURNING id",
             // file_id,
             new_filename,
             // file_name,
@@ -222,12 +229,33 @@ async fn upload_file(State(pool): State<PgPool>, mut multipart: Multipart) -> Re
             "test",
             // upload_path
         )
+        // .execute(&pool)
+        .fetch_one(&pool)
+        .await
+        .map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to save file in db".to_string(),
+            )
+        })
+        .map(|record| record.id);
+
+        let inserted_id = match uploaded_file {
+            Ok(record) => record,
+            Err(e) => return Err(e)
+        };
+
+        sqlx::query!(
+            "INSERT INTO file_store (storeId, fileId) VALUES ($1, $2)",
+            store_id,
+            inserted_id
+        )
         .execute(&pool)
         .await
         .map_err(|_| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to save file metadata".to_string(),
+                "Failed to save add file to store".to_string(),
             )
         })?;
 
@@ -282,6 +310,41 @@ async fn get_file_by_id(
     ))
 }
 
+#[axum::debug_handler]
+async fn create_store(State(pool): State<PgPool>, Extension(token): Extension<TokenData<Claims>>, Json(store): Json<Store>) -> Result<(StatusCode, String), (StatusCode, String)> {
+    let file_store = sqlx::query!(
+        // "SELECT name, content_type, path FROM files WHERE id = $1",
+        "INSERT INTO stores (name) VALUES ($1) RETURNING id",
+        store.name
+    )
+    .fetch_one(&pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e.to_string())))
+    .map(|record| record.id);
+    // .ok_or((StatusCode::NOT_FOUND, "File not found".to_string()))?;
+
+    let inserted_id = match file_store {
+        Ok(record) => record,
+        Err(e) => return Err(e)
+    };
+
+    sqlx::query!(
+        "INSERT INTO user_store (storeId, userId) VALUES ($1, $2)",
+        inserted_id,
+        token.claims.id
+    )
+    .execute(&pool)
+    .await
+    .map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to save add file to store".to_string(),
+        )
+    })?;
+
+    return Ok((StatusCode::OK, "{'message': 'store created succesfully'}".to_string()))
+}
+
 // #[dotenvy::load]
 #[tokio::main]
 async fn main() -> Result<(), color_eyre::Report> {
@@ -301,8 +364,9 @@ async fn main() -> Result<(), color_eyre::Report> {
         .init();
 
     let auth_routes = Router::new()
-        .route("/upload", post(upload_file))
+        .route("/:store_id/upload", post(upload_file))
         .route("/file/:file_id", get(get_file_by_id))
+        .route("/store/create", post(create_store))
         .layer(ServiceBuilder::new().layer(axum::middleware::from_fn(middleware::authorization_middleware)));
 
     let app = Router::new()
