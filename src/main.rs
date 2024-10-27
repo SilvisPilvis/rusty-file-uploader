@@ -363,6 +363,20 @@ async fn main() -> Result<(), color_eyre::Report> {
         .compact()
         .init();
 
+        let trace_layer = TraceLayer::new_for_http()
+        .make_span_with(trace::DefaultMakeSpan::new().level(tracing::Level::INFO))
+        .on_request(trace::DefaultOnRequest::new().level(tracing::Level::INFO))
+        .on_response(
+            trace::DefaultOnResponse::new()
+                .level(tracing::Level::INFO)
+                // .latency_unit(tower_http::classify::LatencyUnit::Micros),
+        )
+        .on_failure(
+            trace::DefaultOnFailure::new()
+                .level(tracing::Level::ERROR)
+        );
+
+
     let auth_routes = Router::new()
         .route("/:store_id/upload", post(upload_file))
         .route("/file/:file_id", get(get_file_by_id))
@@ -376,17 +390,7 @@ async fn main() -> Result<(), color_eyre::Report> {
         .nest("", auth_routes)
         // .route("/upload", post(upload_file))
         .with_state(pool)
-        .layer(
-            ServiceBuilder::new()
-            .layer(
-                TraceLayer::new_for_http()
-                .make_span_with(trace::DefaultMakeSpan::new()
-                .level(Level::INFO))
-                .on_response(trace::DefaultOnResponse::new()
-                .level(Level::INFO))
-            )
-
-        );
+        .layer(trace_layer);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3000").await.unwrap();
     axum::serve(listener, app.into_make_service()).await.unwrap();
