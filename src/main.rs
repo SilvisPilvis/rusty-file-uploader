@@ -1,4 +1,4 @@
-use std::env;
+use std::{env, vec};
 use color_eyre;
 use axum::{
     extract::{State, Multipart, Path, Extension}, http::{HeaderMap, StatusCode, header}, routing::{get, post}, Json, Router, response::IntoResponse
@@ -36,6 +36,11 @@ struct User {
 #[derive(serde::Serialize, serde::Deserialize)]
 struct Store {
     name: String,
+}
+
+#[derive(Serialize)]
+struct StoreFiles {
+    file_ids: Vec<i32>,
 }
 
 const API_PATH: &'static str = "http://127.0.0.1:3000";
@@ -259,7 +264,8 @@ async fn upload_file(State(pool): State<PgPool>, Path(store_id): Path<i32>, mut 
         // Ok(Json(UploadResponse {
         //     file_url: format!("/files/{}", file_id),
         // }));
-        return Ok((StatusCode::OK, format!("/files/{}", file_id)))
+        let message = format!("/files/{}", file_id);
+        return Ok((StatusCode::OK, "{'message':'uploaded file".to_owned()+&message+"'}"));
 
         // tracing::info!("{} uploaded {} files")
     } else {
@@ -307,9 +313,36 @@ async fn get_file_by_id(
     ))
 }
 
+async fn get_files_from_store(
+    State(pool): State<PgPool>,
+    Path(store_id): Path<i32>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let file_ids = sqlx::query!(
+        "SELECT fileId FROM file_store WHERE storeId = $1",
+        store_id
+    )
+    .fetch_all(&pool)  // Changed from fetch_optional to fetch_all
+    .await
+    .map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to fetch files from db".to_string(),
+        )
+    })?
+    .into_iter()
+    .map(|record| record.fileid)
+    .collect::<Vec<i32>>();
+
+    // Return JSON response
+    Ok(Json(StoreFiles { file_ids }))
+    
+    // Or if you prefer to return just the array:
+    // Ok(Json(file_ids))
+}
+
+
 #[axum::debug_handler]
 async fn create_store(Extension(claims): Extension<Claims>, State(pool): State<PgPool>, Json(store): Json<Store>) -> Result<(StatusCode, String), (StatusCode, String)> {
-
     let file_store = sqlx::query!(
         // "SELECT name, content_type, path FROM files WHERE id = $1",
         "INSERT INTO stores (name) VALUES ($1) RETURNING id",
@@ -363,7 +396,7 @@ async fn main() -> Result<(), color_eyre::Report> {
         .compact()
         .init();
 
-        let trace_layer = TraceLayer::new_for_http()
+    let trace_layer = TraceLayer::new_for_http()
         .make_span_with(trace::DefaultMakeSpan::new().level(tracing::Level::INFO))
         .on_request(trace::DefaultOnRequest::new().level(tracing::Level::INFO))
         .on_response(
@@ -381,6 +414,7 @@ async fn main() -> Result<(), color_eyre::Report> {
         .route("/:store_id/upload", post(upload_file))
         .route("/file/:file_id", get(get_file_by_id))
         .route("/store/create", post(create_store))
+        .route("/:store_id/files", get(get_files_from_store))
         .layer(ServiceBuilder::new().layer(axum::middleware::from_fn(middleware::authorization_middleware)));
 
     let app = Router::new()
