@@ -1,14 +1,14 @@
-use std::{env, vec};
+use std::env;
 use color_eyre;
 use axum::{
     extract::{State, Multipart, Path, Extension}, http::{HeaderMap, StatusCode, header}, routing::{get, post}, Json, Router, response::IntoResponse
 };
-use dotenvy_macro::dotenv;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
+use time::PrimitiveDateTime;
 use tokio::{fs::File, io::AsyncWriteExt, io::AsyncReadExt};
-// use tokio::io::AsyncReadExt;
+use chksum_hash_md5 as md5;
 // use serde_json;
 use argon2::{
     password_hash::{
@@ -34,13 +34,36 @@ struct User {
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
-struct Store {
+struct CreateStore {
     name: String,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct UpdateStore {
+    name: String,
+    cover: i32
 }
 
 #[derive(Serialize)]
 struct StoreFiles {
     file_ids: Vec<i32>,
+}
+
+#[derive(serde::Serialize)]
+#[serde_with::serde_as]
+struct UserStore {
+    id: i32,
+    name: String,
+    // created_at: NaiveDateTime,
+    #[serde_as(as = "TimestampMilliSeconds")]
+    created_at: PrimitiveDateTime,
+    cover: i32,
+    file_count: i64,
+}
+
+#[derive(serde::Serialize)]
+struct UserStores {
+    user_stores: Vec<UserStore>
 }
 
 const API_PATH: &'static str = "http://127.0.0.1:3000";
@@ -49,6 +72,23 @@ const API_PATH: &'static str = "http://127.0.0.1:3000";
 // struct JsonError {
 //     error: String,
 // }
+
+async fn get_file_hash(file_path: &str) -> tokio::io::Result<String> {
+    let mut file = File::open(file_path).await?;
+    let mut hasher = md5::new();
+    let mut buffer = [0; 1024];
+
+    loop {
+        let bytes_read = file.read(&mut buffer).await?;
+        if bytes_read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..bytes_read]);
+    }
+
+    let result = hasher.finalize();
+    Ok(format!("{:x}", result.digest()))
+}
 
 #[axum::debug_handler]
 async fn health_check(_req: axum::http::Request<axum::body::Body>,) -> Result<(StatusCode, String), (StatusCode, String)> {
@@ -214,12 +254,23 @@ async fn upload_file(State(pool): State<PgPool>, Path(store_id): Path<i32>, mut 
             )
         })?;
 
+        let uploaded_file_path = format!("./uploads/{}",&new_filename);
+
+        let file_hash = match get_file_hash(uploaded_file_path.as_str()).await {
+            Ok(hash) => hash,
+            Err(e) => {
+                tracing::error!("Error generating token {}", e);
+                return Err((StatusCode::INTERNAL_SERVER_ERROR, "Error generating token".to_string()));
+            }
+        };
+
         let uploaded_file = sqlx::query!(
+            // "INSERT INTO files (name, content_type, original_name, md5) VALUES ($1, $2, $3) RETURNING id",
             "INSERT INTO files (name, content_type, md5) VALUES ($1, $2, $3) RETURNING id",
             new_filename,
             mime_type,
-            // content_type,
-            "test",
+            // field.name, 
+            file_hash,
         )
         .fetch_one(&pool)
         .await
@@ -328,11 +379,59 @@ async fn get_files_from_store(
     // Ok(Json(file_ids))
 }
 
+async fn get_user_stores(
+    Extension(claims): Extension<Claims>,
+    State(pool): State<PgPool>,
+    ) -> Result<impl IntoResponse, (StatusCode, String)> {
+
+     let user_stores = sqlx::query!(
+        "SELECT
+        s.id,
+        s.name,
+        s.cover,
+        s.created_at,
+        COUNT(fs.fileId) as file_count
+        FROM stores s
+        INNER JOIN user_store us ON s.id = us.storeId
+        LEFT JOIN file_store fs ON fs.storeId = s.id
+        WHERE us.userId = $1
+        GROUP BY s.id, s.name, s.created_at, s.cover
+        ORDER BY s.created_at DESC;",
+        claims.id
+    )
+    .fetch_all(&pool)  // Changed from fetch_optional to fetch_all
+    .await
+    .map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to fetch files from db".to_string(),
+        )
+    })?
+    .into_iter()
+    .map(|record| UserStore {
+        id: record.id,
+        name: record.name
+        .expect("Store has no name"),
+        created_at: record.created_at,
+        file_count: record.file_count
+        .expect("No files in store"),
+        cover: record.cover
+        // .expect("No cover for store")
+        .unwrap_or(0)
+    })
+    .collect::<Vec<UserStore>>();
+
+    // Return JSON response
+    Ok(Json(UserStores { user_stores }))
+    
+    // Or if you prefer to return just the array:
+    // Ok(Json(file_ids))
+}
+
 
 #[axum::debug_handler]
-async fn create_store(Extension(claims): Extension<Claims>, State(pool): State<PgPool>, Json(store): Json<Store>) -> Result<(StatusCode, String), (StatusCode, String)> {
+async fn create_store(Extension(claims): Extension<Claims>, State(pool): State<PgPool>, Json(store): Json<CreateStore>) -> Result<(StatusCode, String), (StatusCode, String)> {
     let file_store = sqlx::query!(
-        // "SELECT name, content_type, path FROM files WHERE id = $1",
         "INSERT INTO stores (name) VALUES ($1) RETURNING id",
         store.name
     )
@@ -350,7 +449,6 @@ async fn create_store(Extension(claims): Extension<Claims>, State(pool): State<P
     sqlx::query!(
         "INSERT INTO user_store (storeId, userId) VALUES ($1, $2)",
         inserted_id,
-        // token.claims.id
         claims.id
     )
     .execute(&pool)
@@ -363,6 +461,27 @@ async fn create_store(Extension(claims): Extension<Claims>, State(pool): State<P
     })?;
 
     let message = format!("store {} with id: {} created succesfully", store.name, inserted_id);
+    return Ok((StatusCode::OK, message.to_string()))
+}
+
+async fn update_store(Extension(claims): Extension<Claims>, State(pool): State<PgPool>, Path(store_id): Path<i32>, Json(store): Json<UpdateStore>) -> Result<(StatusCode, String), (StatusCode, String)> {
+    sqlx::query!(
+        "UPDATE stores SET name = $1, cover = $2 WHERE id = $3",
+        store.name,
+        store.cover,
+        store_id
+    )
+    .execute(&pool)
+    .await
+    .map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to save add file to store".to_string(),
+        )
+    })?;
+   
+
+    let message = format!("store {} updated succesfully", store.name);
     return Ok((StatusCode::OK, message.to_string()))
 }
 
@@ -399,10 +518,12 @@ async fn main() -> Result<(), color_eyre::Report> {
 
 
     let auth_routes = Router::new()
-        .route("/:store_id/upload", post(upload_file))
-        .route("/file/:file_id", get(get_file_by_id))
+        .route("/store/:store_id/upload", post(upload_file))
         .route("/store/create", post(create_store))
-        .route("/:store_id/files", get(get_files_from_store))
+        .route("/store", get(get_user_stores))
+        .route("/store/:store_id/files", get(get_files_from_store))
+        .route("/store/:store_id/edit", post(update_store))
+        .route("/file/:file_id", get(get_file_by_id))
         .layer(ServiceBuilder::new().layer(axum::middleware::from_fn(middleware::authorization_middleware)));
 
     let app = Router::new()
