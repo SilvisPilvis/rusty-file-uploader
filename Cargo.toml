@@ -21,3 +21,4 @@ chrono = "0.4.38"
 uuid = { version = "1.11.0", features = ["v4", "serde"]}
 dotenvy = { version = "0.15.7" }
 dotenvy_macro = "0.15.7"
+infer = "0.16.0"

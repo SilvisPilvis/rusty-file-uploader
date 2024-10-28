@@ -167,9 +167,9 @@ async fn upload_file(State(pool): State<PgPool>, Path(store_id): Path<i32>, mut 
             .ok_or((StatusCode::BAD_REQUEST, "No filename provided".to_string()))?
             .to_string();
         
-        let content_type = field.content_type()
-            .ok_or((StatusCode::BAD_REQUEST, "No content type provided".to_string()))?
-            .to_string();
+        // let content_type = field.content_type()
+        //     .ok_or((StatusCode::BAD_REQUEST, "No content type provided".to_string()))?
+        //     .to_string();
         
         // Generate unique filename
         let file_id = Uuid::new_v4();
@@ -196,6 +196,10 @@ async fn upload_file(State(pool): State<PgPool>, Path(store_id): Path<i32>, mut 
             )
         })?;
 
+        let mime_type = infer::get(&contents)
+        .map_or("application/octet-stream", |kind| kind.mime_type())
+        .to_string();
+
         let mut file = File::create(&upload_path).await.map_err(|_| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -210,28 +214,13 @@ async fn upload_file(State(pool): State<PgPool>, Path(store_id): Path<i32>, mut 
             )
         })?;
 
-        // Save file metadata to database
-        // sqlx::query!(
-        //     // "INSERT INTO files (id, name, content_type, path) VALUES ($1, $2, $3, $4)",
-        //     "INSERT INTO files (id, name, content_type) VALUES ($1, $2, $3)",
-        //     file_id,
-        //     file_name,
-        //     content_type,
-        //     // upload_path
-        // )
-         
-
         let uploaded_file = sqlx::query!(
-            // "INSERT INTO files (id, name, content_type, path) VALUES ($1, $2, $3, $4)",
             "INSERT INTO files (name, content_type, md5) VALUES ($1, $2, $3) RETURNING id",
-            // file_id,
             new_filename,
-            // file_name,
-            content_type,
+            mime_type,
+            // content_type,
             "test",
-            // upload_path
         )
-        // .execute(&pool)
         .fetch_one(&pool)
         .await
         .map_err(|_| {
@@ -261,9 +250,6 @@ async fn upload_file(State(pool): State<PgPool>, Path(store_id): Path<i32>, mut 
             )
         })?;
 
-        // Ok(Json(UploadResponse {
-        //     file_url: format!("/files/{}", file_id),
-        // }));
         let message = format!("/files/{}", file_id);
         return Ok((StatusCode::OK, "{'message':'uploaded file".to_owned()+&message+"'}"));
 
@@ -290,7 +276,8 @@ async fn get_file_by_id(
     .ok_or((StatusCode::NOT_FOUND, "File not found".to_string()))?;
 
     // 2. Read file contents
-    let uploaded_file_path = format!("/upload/{}", &file_meta.name.clone().unwrap());
+    let uploaded_file_path = format!("./uploads/{}", &file_meta.name.clone().unwrap());
+    tracing::info!("trying to open file: {uploaded_file_path}");
     let mut file = File::open(&uploaded_file_path)
         .await
         .map_err(|_| (StatusCode::NOT_FOUND, "File not found".to_string()))?;
@@ -301,6 +288,7 @@ async fn get_file_by_id(
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Failed to read file".to_string()))?;
 
     // 3. Return file with proper headers
+    tracing::info!("show file in response");
     Ok((
         [
             (header::CONTENT_TYPE, file_meta.content_type),
