@@ -19,6 +19,7 @@ use argon2::{
 };
 use jsonwebtoken::{self, encode, EncodingKey, Header};
 use tower_http::trace::{self, TraceLayer};
+use tower_http::cors::{CorsLayer, Any};
 use tower::ServiceBuilder;
 // use tracing::Level;
 use uuid::Uuid;
@@ -32,6 +33,12 @@ struct User {
     // id: i32,
     username: String,
     password: String,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug, sqlx::FromRow)]
+struct ResetPassword {
+    username: String,
+    password:String
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -150,13 +157,14 @@ async fn login_user(State(pool): State<PgPool>, Json(credentials): Json<User>) -
     .map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
+            // messages::create_json_response(messages::MessageType::Error, "User not found".to_string()),
             messages::create_json_response(messages::MessageType::Error, e.to_string()),
         )
     })?;
 
     let secert: String = env::var("SECRET").map_err(|_e| ((StatusCode::INTERNAL_SERVER_ERROR, messages::create_json_response(messages::MessageType::Error, "Failed to get SECRET from env".to_string()))))?;
 
-    let user = user.ok_or((StatusCode::UNAUTHORIZED, messages::create_json_response(messages::MessageType::Error, "Failed to login".to_string())))?;
+    let user = user.ok_or((StatusCode::UNAUTHORIZED, messages::create_json_response(messages::MessageType::Error, "User not found".to_string())))?;
     let password = user.password.unwrap();
     let id = user.id;
 
@@ -195,7 +203,7 @@ async fn upload_file(State(pool): State<PgPool>, Path(store_id): Path<i32>, mut 
     if let Some(field) = multipart.next_field().await.map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
-            messages::create_json_response(messages::MessageType::Error, "Failed to process file upload".to_string()),
+            messages::create_json_response(messages::MessageType::Error, format!("Failed to process file upload: {}", e.to_string()).to_string()),
         )
     })? {
         let file_name = field.file_name()
@@ -263,8 +271,8 @@ async fn upload_file(State(pool): State<PgPool>, Path(store_id): Path<i32>, mut 
             // "INSERT INTO files (name, content_type, original_name, md5) VALUES ($1, $2, $3) RETURNING id",
             "INSERT INTO files (name, content_type, md5) VALUES ($1, $2, $3) RETURNING id",
             new_filename,
-            mime_type,
             // field.name, 
+            mime_type,
             file_hash,
         )
         .fetch_one(&pool)
@@ -477,6 +485,31 @@ async fn update_store(Extension(claims): Extension<Claims>, State(pool): State<P
     return Ok((StatusCode::OK, messages::create_json_response(messages::MessageType::Message, message.to_string())))
 }
 
+async fn reset_password(State(pool): State<PgPool>, Json(user): Json<ResetPassword>) -> Result<(StatusCode, String), (StatusCode, String)> {
+    let password = user.password.as_bytes();
+    let salt = SaltString::generate(&mut OsRng);
+    let argon2 = Argon2::default();
+    let password_hash = argon2.hash_password(password, &salt).map_err(|e| ((StatusCode::INTERNAL_SERVER_ERROR, messages::create_json_response(messages::MessageType::Error, e.to_string()))))?.to_string();
+
+    sqlx::query!(
+        "UPDATE users SET password = $1 WHERE username = $2",
+        password_hash,
+        user.username,
+    )
+    .execute(&pool)
+    .await
+    .map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            messages::create_json_response(messages::MessageType::Error, "Failed to update password".to_string()),
+        )
+    })?;
+   
+
+    let message = format!("Reset {}'s password succesfully", user.username);
+    return Ok((StatusCode::OK, messages::create_json_response(messages::MessageType::Message, message.to_string())))
+}
+
 // #[dotenvy::load]
 #[tokio::main]
 async fn main() -> Result<(), color_eyre::Report> {
@@ -508,6 +541,12 @@ async fn main() -> Result<(), color_eyre::Report> {
                 .level(tracing::Level::ERROR)
         );
 
+    // Configure CORS to allow all origins
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_headers(Any);
+    
 
     let auth_routes = Router::new()
         .route("/store/:store_id/upload", post(upload_file))
@@ -517,15 +556,17 @@ async fn main() -> Result<(), color_eyre::Report> {
         .route("/store/:store_id/edit", post(update_store))
         .route("/file/:file_id", get(get_file_by_id))
         .layer(ServiceBuilder::new().layer(axum::middleware::from_fn(middleware::authorization_middleware)));
+        // .layer(cors);
 
     let app = Router::new()
         .route("/", get(health_check))
         .route("/register", post(register_user))
         .route("/login", post(login_user))
+        .route("/reset-password", post(reset_password))
         .nest("", auth_routes)
-        // .route("/upload", post(upload_file))
         .with_state(pool)
-        .layer(trace_layer);
+        .layer(trace_layer)
+        .layer(cors); // Apply CORS middleware
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3000").await.unwrap();
     axum::serve(listener, app.into_make_service()).await.unwrap();

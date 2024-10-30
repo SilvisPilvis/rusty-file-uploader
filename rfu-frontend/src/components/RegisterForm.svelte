@@ -1,10 +1,74 @@
 <script>
+    import InputComponent from "./InputComponent.svelte";
+    import axios from "axios";
+    let { usernameError = '', passwordError = "", repeatError = "", username = "", password = "", repeatPass = "", token } = $state("");
+    
+    async function submit() {
+        usernameError, passwordError, repeatError = "";
 
-</script>
+        if (password !== repeatPass) {
+            repeatError = "Passwords don't match";
+            return;
+        }
 
-<form action="" method="post">
-    <input type="text" name="username" id="">
-    <input type="password" name="password" id="">
-    <input type="password" name="repeat" id="">
-    <button>Login</button>
-</form>
+        if (repeatPass === "") {
+            repeatError = "This field is required";
+            return;
+        }
+
+        if(username && password === "") {
+            passwordError = "Password can't be empty";
+            usernameError = "Username can't be empty";
+            return;
+        }
+
+        if(password === "") {
+            passwordError = "Password can't be empty";
+            return;
+        }
+
+        if(username === "") {
+            usernameError = "Username can't be empty";
+            return;
+        }
+
+        if(username !== "" && password !== "" && repeatPass !== "" && password === repeatPass){
+            axios.post('http://127.0.0.1:3000/register', {
+                username: username,
+                password: password
+            })
+            .then(function (response) {
+                console.log(response["data"]["token"]);
+                token = response["data"]["token"]
+            })
+            .catch(function (error) {
+                console.error(error["response"]["data"]["error"]);
+                usernameError = error["response"]["data"]["error"];
+                passwordError = error["response"]["data"]["error"];
+            });
+        }
+    
+    }
+    
+    function once(fn) {
+        return function (event) {
+            if (fn) fn.call(this, event);
+            fn = null;
+        };
+    }
+    
+    function preventDefault(fn) {
+        return function (event) {
+            event.preventDefault();
+            fn.call(this, event);
+        };
+    }
+    </script>
+    
+    <!-- <form action="" method="post" class="grid grid-rows-3 place-items-center gap-4 outline outline-2 outline-rose-800 p-4 rounded-md" onsubmit={once(preventDefault(submit))}> -->
+    <form action="" method="post" class="flex flex-col justify-center align-start gap-4 outline outline-2 outline-rose-800 p-4 rounded-md" onsubmit={preventDefault(submit)}>
+        <InputComponent type="text" error={usernameError} label="Username:" class="text-inherit" bind:value={username}/>
+        <InputComponent type="password" error={passwordError} label="Password:" bind:value={password}/>
+        <InputComponent type="password" error={repeatError} label="Repeat password:" bind:value={repeatPass}/>
+        <button class="bg-secondary p-4 rounded-md">Login</button>
+    </form> 
