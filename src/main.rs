@@ -1,7 +1,7 @@
 use std::env;
 use color_eyre;
 use axum::{
-    extract::{State, Multipart, Path, Extension}, http::{HeaderMap, StatusCode, header}, routing::{get, post}, Json, Router, response::IntoResponse
+    extract::{State, Multipart, Path, Extension}, http::{StatusCode, header}, routing::{get, post}, Json, Router, response::IntoResponse
 };
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -17,14 +17,15 @@ use argon2::{
     },
     Argon2
 };
-use jsonwebtoken::{self, decode, encode, DecodingKey, EncodingKey, Header, TokenData, Validation};
+use jsonwebtoken::{self, encode, EncodingKey, Header};
 use tower_http::trace::{self, TraceLayer};
 use tower::ServiceBuilder;
-use tracing::Level;
+// use tracing::Level;
 use uuid::Uuid;
 
 mod middleware;
 pub use middleware::Claims;
+mod messages;
 
 #[derive(Deserialize, Serialize, Clone, Debug, sqlx::FromRow)]
 struct User {
@@ -68,11 +69,6 @@ struct UserStores {
 
 const API_PATH: &'static str = "http://127.0.0.1:3000";
 
-// #[derive(serde::Serialize)]
-// struct JsonError {
-//     error: String,
-// }
-
 async fn get_file_hash(file_path: &str) -> tokio::io::Result<String> {
     let mut file = File::open(file_path).await?;
     let mut hasher = md5::new();
@@ -92,20 +88,20 @@ async fn get_file_hash(file_path: &str) -> tokio::io::Result<String> {
 
 #[axum::debug_handler]
 async fn health_check(_req: axum::http::Request<axum::body::Body>,) -> Result<(StatusCode, String), (StatusCode, String)> {
-    Ok((StatusCode::OK, "Success!".to_string()))
+    Ok((StatusCode::OK, messages::create_json_response(messages::MessageType::Message, "API is working".to_string())))
 }
 
 async fn register_user(State(pool): State<PgPool>, Json(user): Json<User>) -> Result<(StatusCode, String), (StatusCode, String)> {
-    if user.username == "" && user.password == "" {
-        return Err((StatusCode::BAD_REQUEST, "Username or Password empty".to_string()));
+    if user.username == "" || user.password == "" {
+        return Err((StatusCode::BAD_REQUEST, messages::create_json_response(messages::MessageType::Error, "Username or Password empty".to_string())));
     }
 
-    let secert: String = env::var("SECRET").map_err(|_e| ((StatusCode::INTERNAL_SERVER_ERROR, "failed to get secert from env".to_string())))?;
+    let secert: String = env::var("SECRET").map_err(|_e| ((StatusCode::INTERNAL_SERVER_ERROR, messages::create_json_response(messages::MessageType::Error, "Failed to get SECRET from env".to_string()))))?;
 
     let password = user.password.as_bytes();
     let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
-    let password_hash = argon2.hash_password(password, &salt).map_err(|e| ((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())))?.to_string();
+    let password_hash = argon2.hash_password(password, &salt).map_err(|e| ((StatusCode::INTERNAL_SERVER_ERROR, messages::create_json_response(messages::MessageType::Error, e.to_string()))))?.to_string();
 
     let result = sqlx::query!(
         "INSERT INTO users (username, password) VALUES ($1, $2) RETURNING id",
@@ -114,7 +110,7 @@ async fn register_user(State(pool): State<PgPool>, Json(user): Json<User>) -> Re
     )
     .fetch_one(&pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e.to_string())))
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, messages::create_json_response(messages::MessageType::Error, e.to_string())))
     .map(|record| record.id);
 
     let inserted_id = match result {
@@ -137,7 +133,7 @@ async fn register_user(State(pool): State<PgPool>, Json(user): Json<User>) -> Re
         Ok(tok) => tok,
         Err(e) => {
             tracing::error!("Error generating token {}", e);
-            return Err((StatusCode::INTERNAL_SERVER_ERROR, "Error generating token".to_string()));
+            return Err((StatusCode::INTERNAL_SERVER_ERROR, messages::create_json_response(messages::MessageType::Error, "Error generatin token".to_string())));
         }
     };
 
@@ -154,19 +150,19 @@ async fn login_user(State(pool): State<PgPool>, Json(credentials): Json<User>) -
     .map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Database error: {}", e),
+            messages::create_json_response(messages::MessageType::Error, e.to_string()),
         )
     })?;
 
-    let secert: String = env::var("SECRET").map_err(|_e| ((StatusCode::INTERNAL_SERVER_ERROR, "failed to get secert from env".to_string())))?;
+    let secert: String = env::var("SECRET").map_err(|_e| ((StatusCode::INTERNAL_SERVER_ERROR, messages::create_json_response(messages::MessageType::Error, "Failed to get SECRET from env".to_string()))))?;
 
-    let user = user.ok_or((StatusCode::UNAUTHORIZED, "Invalid credentials".to_string()))?;
+    let user = user.ok_or((StatusCode::UNAUTHORIZED, messages::create_json_response(messages::MessageType::Error, "Failed to login".to_string())))?;
     let password = user.password.unwrap();
     let id = user.id;
 
     let argon2 = Argon2::default();
     let parsed_hash = PasswordHash::new(&password)
-    .map_err(|e| ((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())))?;
+    .map_err(|e| ((StatusCode::INTERNAL_SERVER_ERROR, messages::create_json_response(messages::MessageType::Error, e.to_string()))))?;
 
     if argon2.verify_password(credentials.password.as_bytes(), &parsed_hash).is_ok() {
         let claims = Claims {
@@ -179,32 +175,31 @@ async fn login_user(State(pool): State<PgPool>, Json(credentials): Json<User>) -
             Ok(tok) => tok,
             Err(e) => {
                 tracing::error!("Error generating token {}", e);
-                return Err((StatusCode::INTERNAL_SERVER_ERROR, "Error generating token".to_string()));
+                return Err((StatusCode::INTERNAL_SERVER_ERROR, messages::create_json_response(messages::MessageType::Error, "Error generating token".to_string())));
             }
         };
     
         let message = format!("User {} logged in.", credentials.username);
         tracing::info!("{message}");
-        return Ok((StatusCode::OK, token));
+        return Ok((StatusCode::OK, messages::create_json_response(messages::MessageType::Token, token)));
     }
 
-    Err((StatusCode::INTERNAL_SERVER_ERROR, "Error loging in".to_string()))
+    Err((StatusCode::INTERNAL_SERVER_ERROR, messages::create_json_response(messages::MessageType::Error, "Error logging in".to_string())))
 }
 
 async fn upload_file(State(pool): State<PgPool>, Path(store_id): Path<i32>, mut multipart: Multipart) -> Result<(StatusCode, String), (StatusCode, String)> {
     if store_id <= 0 {
-        return Err((StatusCode::BAD_REQUEST, "Store id must be bigger than zero".to_string()));
+        return Err((StatusCode::BAD_REQUEST, messages::create_json_response(messages::MessageType::Error, "Store id can't be equal to or less than zero".to_string())));
     }
     // Process file upload
     if let Some(field) = multipart.next_field().await.map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
-            // "Failed to process file upload".to_string(),
-            format!("Failed to process file upload: {}", e).to_string(),
+            messages::create_json_response(messages::MessageType::Error, "Failed to process file upload".to_string()),
         )
     })? {
         let file_name = field.file_name()
-            .ok_or((StatusCode::BAD_REQUEST, "No filename provided".to_string()))?
+            .ok_or((StatusCode::BAD_REQUEST, messages::create_json_response(messages::MessageType::Error, "No filename provided".to_string())))?
             .to_string();
         
         // let content_type = field.content_type()
@@ -224,7 +219,7 @@ async fn upload_file(State(pool): State<PgPool>, Path(store_id): Path<i32>, mut 
         tokio::fs::create_dir_all("uploads").await.map_err(|_| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to create upload directory".to_string(),
+                messages::create_json_response(messages::MessageType::Error, "Failed to create uploads directory".to_string()),
             )
         })?;
 
@@ -232,7 +227,7 @@ async fn upload_file(State(pool): State<PgPool>, Path(store_id): Path<i32>, mut 
         let contents = field.bytes().await.map_err(|_| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to read file contents".to_string(),
+                messages::create_json_response(messages::MessageType::Error, "Failed to read uploaded file contents".to_string()),
             )
         })?;
 
@@ -243,14 +238,14 @@ async fn upload_file(State(pool): State<PgPool>, Path(store_id): Path<i32>, mut 
         let mut file = File::create(&upload_path).await.map_err(|_| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to create file".to_string(),
+                messages::create_json_response(messages::MessageType::Error, "Failed to create file on disk".to_string()),
             )
         })?;
 
         file.write_all(&contents).await.map_err(|_| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to write file".to_string(),
+                messages::create_json_response(messages::MessageType::Error, "Failed to write file to disk".to_string()),
             )
         })?;
 
@@ -260,7 +255,7 @@ async fn upload_file(State(pool): State<PgPool>, Path(store_id): Path<i32>, mut 
             Ok(hash) => hash,
             Err(e) => {
                 tracing::error!("Error generating token {}", e);
-                return Err((StatusCode::INTERNAL_SERVER_ERROR, "Error generating token".to_string()));
+                return Err((StatusCode::INTERNAL_SERVER_ERROR, messages::create_json_response(messages::MessageType::Error, "Failed to generate token".to_string())));
             }
         };
 
@@ -277,7 +272,7 @@ async fn upload_file(State(pool): State<PgPool>, Path(store_id): Path<i32>, mut 
         .map_err(|_| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to save file in db".to_string(),
+                messages::create_json_response(messages::MessageType::Error, "Failed to save file in db".to_string()),
             )
         })
         .map(|record| record.id);
@@ -297,16 +292,16 @@ async fn upload_file(State(pool): State<PgPool>, Path(store_id): Path<i32>, mut 
         .map_err(|_| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to save add file to store".to_string(),
+                messages::create_json_response(messages::MessageType::Message, "Failed to save add file to store".to_string()),
             )
         })?;
 
-        let message = format!("/files/{}", file_id);
-        return Ok((StatusCode::OK, "{'message':'uploaded file".to_owned()+&message+"'}"));
+        // let message = format!("/files/{}", file_id);
+        return Ok((StatusCode::OK, messages::create_json_response(messages::MessageType::Message, "Succesfully uploaded files".to_string())));
 
         // tracing::info!("{} uploaded {} files")
     } else {
-        return Err((StatusCode::BAD_REQUEST, "{ 'error': 'No file provided' }".to_string()))
+        return Err((StatusCode::BAD_REQUEST, messages::create_json_response(messages::MessageType::Error, "No file provided".to_string())))
     };
 }
 
@@ -323,20 +318,20 @@ async fn get_file_by_id(
     )
     .fetch_optional(&pool)
     .await
-    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string()))?
-    .ok_or((StatusCode::NOT_FOUND, "File not found".to_string()))?;
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, messages::create_json_response(messages::MessageType::Error, e.to_string())))?
+    .ok_or((StatusCode::NOT_FOUND, messages::create_json_response(messages::MessageType::Error, "File not found".to_string())))?;
 
     // 2. Read file contents
     let uploaded_file_path = format!("./uploads/{}", &file_meta.name.clone().unwrap());
     tracing::info!("trying to open file: {uploaded_file_path}");
     let mut file = File::open(&uploaded_file_path)
         .await
-        .map_err(|_| (StatusCode::NOT_FOUND, "File not found".to_string()))?;
+        .map_err(|_| (StatusCode::NOT_FOUND, messages::create_json_response(messages::MessageType::Error, "File not found".to_string())))?;
 
     let mut contents = Vec::new();
     file.read_to_end(&mut contents)
         .await
-        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Failed to read file".to_string()))?;
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, messages::create_json_response(messages::MessageType::Error, "Failed to read file".to_string())))?;
 
     // 3. Return file with proper headers
     tracing::info!("show file in response");
@@ -365,7 +360,7 @@ async fn get_files_from_store(
     .map_err(|_| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            "Failed to fetch files from db".to_string(),
+            messages::create_json_response(messages::MessageType::Error, "Failed to get files from db".to_string()),
         )
     })?
     .into_iter()
@@ -374,9 +369,6 @@ async fn get_files_from_store(
 
     // Return JSON response
     Ok(Json(StoreFiles { file_ids }))
-    
-    // Or if you prefer to return just the array:
-    // Ok(Json(file_ids))
 }
 
 async fn get_user_stores(
@@ -404,7 +396,7 @@ async fn get_user_stores(
     .map_err(|_| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            "Failed to fetch files from db".to_string(),
+            messages::create_json_response(messages::MessageType::Error, "Failed to get files from db".to_string()),
         )
     })?
     .into_iter()
@@ -437,7 +429,7 @@ async fn create_store(Extension(claims): Extension<Claims>, State(pool): State<P
     )
     .fetch_one(&pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e.to_string())))
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, messages::create_json_response(messages::MessageType::Error, e.to_string())))
     .map(|record| record.id);
     // .ok_or((StatusCode::NOT_FOUND, "File not found".to_string()))?;
 
@@ -456,12 +448,12 @@ async fn create_store(Extension(claims): Extension<Claims>, State(pool): State<P
     .map_err(|_| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            "Failed to save add file to store".to_string(),
+            messages::create_json_response(messages::MessageType::Error, "Failed to save add file to store".to_string()),
         )
     })?;
 
     let message = format!("store {} with id: {} created succesfully", store.name, inserted_id);
-    return Ok((StatusCode::OK, message.to_string()))
+    return Ok((StatusCode::OK, messages::create_json_response(messages::MessageType::Message, message.to_string())))
 }
 
 async fn update_store(Extension(claims): Extension<Claims>, State(pool): State<PgPool>, Path(store_id): Path<i32>, Json(store): Json<UpdateStore>) -> Result<(StatusCode, String), (StatusCode, String)> {
@@ -476,13 +468,13 @@ async fn update_store(Extension(claims): Extension<Claims>, State(pool): State<P
     .map_err(|_| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            "Failed to save add file to store".to_string(),
+            messages::create_json_response(messages::MessageType::Error, "Failed to update store".to_string()),
         )
     })?;
    
 
     let message = format!("store {} updated succesfully", store.name);
-    return Ok((StatusCode::OK, message.to_string()))
+    return Ok((StatusCode::OK, messages::create_json_response(messages::MessageType::Message, message.to_string())))
 }
 
 // #[dotenvy::load]
