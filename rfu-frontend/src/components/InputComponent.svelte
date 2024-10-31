@@ -14,8 +14,7 @@ let { type, error, label, value = $bindable() } = $props();
 <div class="grid grid-cols-1">
     <label class="grid grid-cols-1">
         {label}
-        <input type="{type}" class="bg-primary p-4 rounded-md text-text focus:outline-none" bind:value={value}>
+        <input type="{type}" class="bg-primary p-4 rounded-md text-text focus:outline-none">
     </label>
 </div>
 {/if}
-

@@ -1,0 +1,8 @@
+---
+import UpdateStoreForm from "../../../components/UpdateStoreForm.svelte"
+const { id } = Astro.params;
+---
+
+<main class="h-screen bg-background text-text flex justify-center items-center">
+    <UpdateStoreForm storeId={id}/>
+</main>

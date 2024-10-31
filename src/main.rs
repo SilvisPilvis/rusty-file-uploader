@@ -583,12 +583,12 @@ async fn main() -> Result<(), color_eyre::Report> {
         .on_request(trace::DefaultOnRequest::new().level(tracing::Level::INFO))
         .on_response(
             trace::DefaultOnResponse::new()
-                .level(tracing::Level::INFO)
-                // .latency_unit(tower_http::classify::LatencyUnit::Micros),
+            .level(tracing::Level::INFO)
+            // .latency_unit(tower_http::classify::LatencyUnit::Micros),
         )
         .on_failure(
             trace::DefaultOnFailure::new()
-                .level(tracing::Level::ERROR)
+            .level(tracing::Level::ERROR)
         );
 
     // Configure CORS to allow all origins
@@ -597,7 +597,6 @@ async fn main() -> Result<(), color_eyre::Report> {
         .allow_methods(Any)
         .allow_headers(Any);
     
-
     let auth_routes = Router::new()
         .route("/store/:store_id/upload", post(upload_file))
         .route("/store/create", post(create_store))

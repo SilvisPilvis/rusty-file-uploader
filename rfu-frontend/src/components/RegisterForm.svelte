@@ -65,12 +65,12 @@
             fn.call(this, event);
         };
     }
-    </script>
+</script>
     
     <!-- <form action="" method="post" class="grid grid-rows-3 place-items-center gap-4 outline outline-2 outline-rose-800 p-4 rounded-md" onsubmit={once(preventDefault(submit))}> -->
     <form action="" method="post" class="flex flex-col justify-center align-start gap-4 outline outline-2 outline-rose-800 p-4 rounded-md" onsubmit={preventDefault(submit)}>
         <InputComponent type="text" error={usernameError} label="Username:" class="text-inherit" bind:value={username}/>
         <InputComponent type="password" error={passwordError} label="Password:" bind:value={password}/>
         <InputComponent type="password" error={repeatError} label="Repeat password:" bind:value={repeatPass}/>
-        <button class="bg-secondary p-4 rounded-md">Login</button>
+        <button class="bg-secondary p-4 rounded-md">Register</button>
     </form> 

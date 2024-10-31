@@ -2,6 +2,7 @@
     import InputComponent from "./InputComponent.svelte";
     import axios from "axios";
     let { nameError = '', name } = $state("");
+    let {storeId = $bindable("")} = $props();
     
     async function submit() {
         nameError = "";
@@ -11,8 +12,8 @@
             return;
         }
     
-        axios.post('http://127.0.0.1:3000/store/create', {
-            name: name,
+        axios.post(`http://127.0.0.1:3000/store/${store_id}/edit`, {
+            name: name
         })
         .then(function (response) {
             console.log(response["data"]);
@@ -39,9 +40,8 @@
         };
     }
 </script>
-    
-    <!-- <form action="" method="post" class="grid grid-rows-3 place-items-center gap-4 outline outline-2 outline-rose-800 p-4 rounded-md" onsubmit={once(preventDefault(submit))}> -->
-    <form action="" method="post" class="flex flex-col justify-center align-start gap-4 outline outline-2 outline-rose-800 p-4 rounded-md" onsubmit={preventDefault(submit)}>
-        <InputComponent type="text" error={nameError} label="Enter store name:" class="text-inherit" bind:value={name}/>
-        <button class="bg-secondary p-4 rounded-md">Create</button>
-    </form>
+
+<form action="" method="post" class="flex flex-col justify-center align-start gap-4 outline outline-2 outline-rose-800 p-4 rounded-md" onsubmit={preventDefault(submit)}>
+    <InputComponent type="text" error={nameError} label="Enter store name:" class="text-inherit" bind:value={name}/>
+    <button class="bg-secondary p-4 rounded-md">Update</button>
+</form>

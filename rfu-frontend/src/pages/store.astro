@@ -1,6 +1,7 @@
 ---
 import axios from "axios";
 import Cookies from "js-cookie";
+import moment from 'moment';
 
 if (!Astro.cookies.has("token")) {
     return Astro.redirect("/login");
@@ -10,7 +11,7 @@ if (!Astro.cookies.has("token")) {
 interface Store {
   id: number;
   name: string;
-  created_at: string;
+  created_at: Array<Number>;
   cover: number;
   file_count: number;
 }
@@ -25,6 +26,7 @@ try {
     }
   });
   stores = response["data"]["user_stores"];
+  console.log(response["data"]["user_stores"][0]["created_at"])
 } catch (e) {
 //   error = e instanceof Error ? e.message : 'An error occurred';
   console.error('Error fetching posts:', e.response.data.error);
@@ -38,7 +40,14 @@ try {
                 <p>Id: {store.id}</p>
                 <p>Name: {store.name}</p>
                 <p>Files: {store.file_count}</p>
-                <p>{store.created_at}</p>
+                <p>{moment().year(store.created_at[0])
+                  .dayOfYear(store.created_at[1])
+                  .hours(store.created_at[2])
+                  .minutes(store.created_at[3])
+                  .seconds(store.created_at[4])
+                  .milliseconds(Math.floor(store.created_at[5] / 1_000_000))
+                  .format('DD-MM-YYYY HH:mm')
+                  }</p>
             </div>
         </a>
     ))}
