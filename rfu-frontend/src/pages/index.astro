@@ -26,7 +26,7 @@ if (!Astro.cookies.has("token")) {
 }
 ---
 
-<main class="h-screen bg-background text-text grid grid-cols-1 grid-rows-1 place-items-center">
-    <p>Test</p>
-    <!-- <pre>{Astro.cookies.get("token")?.value}</pre> -->
+<main class="h-screen bg-background text-text flex items-center justify-center">
+    <p class="text-wrap">{Astro.cookies.get("token")?.value}</p>
+    <!-- <pre class="">{Astro.cookies.get("token")?.value}</pre> -->
 </main>

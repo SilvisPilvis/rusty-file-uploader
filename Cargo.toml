@@ -24,3 +24,4 @@ infer = "0.16.0"
 time = {version = "*", features = ["serde"]}
 serde_with = "3.11.0"
 chksum-hash-md5 = "0.0.1"
+base64 = "0.22.1"

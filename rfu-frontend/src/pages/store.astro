@@ -1,0 +1,45 @@
+---
+import axios from "axios";
+import Cookies from "js-cookie";
+
+if (!Astro.cookies.has("token")) {
+    return Astro.redirect("/login");
+}
+
+// Define the type for your data
+interface Store {
+  id: number;
+  name: string;
+  created_at: string;
+  cover: number;
+  file_count: number;
+}
+
+// Fetch data in the component's server-side code
+let stores: Store[] = [];
+
+try {
+  const response = await axios.get('http://127.0.0.1:3000/store', {
+    headers: {
+        Authorization: `Bearer ${Astro.cookies.get("token")?.value}`
+    }
+  });
+  stores = response["data"]["user_stores"];
+} catch (e) {
+//   error = e instanceof Error ? e.message : 'An error occurred';
+  console.error('Error fetching posts:', e.response.data.error);
+}
+---
+
+<main class="h-screen bg-background text-text flex justify-center items-center">
+    {stores.map((store) => (
+        <a href={`/store/${store.id}/files`}>
+            <div class="bg-primary p-4 gap-4 rounded-md">
+                <p>Id: {store.id}</p>
+                <p>Name: {store.name}</p>
+                <p>Files: {store.file_count}</p>
+                <p>{store.created_at}</p>
+            </div>
+        </a>
+    ))}
+</main>

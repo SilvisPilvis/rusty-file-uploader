@@ -1,0 +1,87 @@
+---
+import axios from "axios";
+// import Cookies from "js-cookie";
+// import { BufferEncoding } from "typescript";
+
+if (!Astro.cookies.has("token")) {
+    return Astro.redirect("/login");
+}
+
+const { id } = Astro.params;
+
+// Define the type for your data
+// Define the type for your data
+interface File {
+  file_id: number;
+  content?: string;
+  name?: string;
+  is_image?: boolean;
+  mime_type?: string;
+}
+
+// Fetch data in the component's server-side code
+let files: File[] = [];
+
+try {
+  // First, get the list of file IDs
+  const listResponse = await axios.get(`http://127.0.0.1:3000/store/${id}/files`, {
+    headers: {
+      Authorization: `Bearer ${Astro.cookies.get("token")?.value}`
+    }
+  });
+  
+  // Map file IDs to an array of file objects
+  const fileIds = listResponse.data.file_ids;
+  
+ // Fetch content for each file concurrently
+ const fileContentPromises = fileIds.map(async (fileId: number) => {
+    try {
+      const fileResponse = await axios.get(`http://127.0.0.1:3000/file/${fileId}`, {
+        headers: {
+          Authorization: `Bearer ${Astro.cookies.get("token")?.value}`
+        },
+      });
+
+      const mime_type = fileResponse.data.content_type;
+
+      const content =
+        `data:${mime_type};base64,${fileResponse.data.base64_content}`;
+      
+      const name = fileResponse.data.filename;
+      
+      return {
+        file_id: fileId,
+        content,
+        name,
+        // is_image,
+        mime_type
+      };
+    } catch (fetchError) {
+      console.error(`Error fetching file ${fileId}:`, fetchError);
+      return {
+        file_id: fileId,
+        content: 'Error loading file content',
+        is_image: false
+      };
+    }
+  });
+  
+  // Wait for all file content requests to complete
+  files = await Promise.all(fileContentPromises);
+  
+} catch (e) {
+  // error = e instanceof Error ? e.message : 'An error occurred fetching files';
+  console.error('Error fetching files:', e.response.data);
+}
+---
+
+<main class="h-screen bg-background text-text flex justify-center items-center">
+  <section class="grid grid-cols-6 gap-2 h-full">
+    {files.map((file) => (
+      <div class="grid grid-rows-2 grid-cols-1">
+        <img src={file.content} alt="" class="min-w-26 min-h-26 max-w-52 max-h-52 rounded-md object-cover mx-auto m-2">
+        <p class="text-wrap">{file.name}</p>
+      </div>
+    ))}
+  </section>
+</main>

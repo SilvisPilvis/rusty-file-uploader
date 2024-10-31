@@ -1,11 +1,27 @@
 <script>
 import InputComponent from "./InputComponent.svelte";
 import axios from "axios";
-let { usernameError = '', passwordError = "", username, password, token } = $state("");
 import Cookies from "js-cookie";
+let { usernameError = '', passwordError = "", username, password, token } = $state("");
 
 async function submit() {
     usernameError, passwordError = "";
+
+    if(password === "") {
+        passwordError = "Password can't be empty";
+        return;
+    }
+
+    if(username === "") {
+        usernameError = "Username can't be empty";
+        return;
+    }
+
+    if (username === "" && password === "") {
+        passwordError = "Password can't be empty";
+        usernameError = "Username can't be empty";
+        return;
+    }
 
     axios.post('http://127.0.0.1:3000/login', {
         username: username,

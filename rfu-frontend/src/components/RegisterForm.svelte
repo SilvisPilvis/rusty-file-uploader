@@ -1,6 +1,8 @@
 <script>
     import InputComponent from "./InputComponent.svelte";
     import axios from "axios";
+    import Cookies from "js-cookie";
+    
     let { usernameError = '', passwordError = "", repeatError = "", username = "", password = "", repeatPass = "", token } = $state("");
     
     async function submit() {

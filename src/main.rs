@@ -23,6 +23,8 @@ use tower_http::cors::{CorsLayer, Any};
 use tower::ServiceBuilder;
 // use tracing::Level;
 use uuid::Uuid;
+// use base64::prelude::*;
+use base64::{Engine as _, engine::{self, general_purpose}, alphabet};
 
 mod middleware;
 pub use middleware::Claims;
@@ -356,6 +358,53 @@ async fn get_file_by_id(
     ))
 }
 
+async fn get_file_by_id_base64(
+    State(pool): State<PgPool>,
+    Path(file_id): Path<i32>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    // 1. Get file metadata from database using ID
+    let file_meta = sqlx::query!(
+        "SELECT name, content_type FROM files WHERE id = $1",
+        file_id
+    )
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, messages::create_json_response(messages::MessageType::Error, e.to_string())))?
+    .ok_or((StatusCode::NOT_FOUND, messages::create_json_response(messages::MessageType::Error, "File not found".to_string())))?;
+
+    // 2. Read file contents and base64 encode
+    let uploaded_file_path = format!("./uploads/{}", &file_meta.name.clone().unwrap());
+    tracing::info!("trying to open file: {uploaded_file_path}");
+    
+    let mut file = File::open(&uploaded_file_path)
+        .await
+        .map_err(|_| (StatusCode::NOT_FOUND, messages::create_json_response(messages::MessageType::Error, "File not found".to_string())))?;
+    
+    let mut contents = Vec::new();
+    file.read_to_end(&mut contents)
+        .await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, messages::create_json_response(messages::MessageType::Error, "Failed to read file".to_string())))?;
+
+    // 3. Base64 encode the file contents
+    // let base64_contents = Engine::encode(self, &contents);
+    let base64_contents = general_purpose::STANDARD.encode(&contents);
+    // let base64_contents = base64::encode(&contents);
+
+    // 4. Return a JSON response with base64 encoded file
+    let response = serde_json::json!({
+        "filename": file_meta.name.unwrap(),
+        "content_type": file_meta.content_type,
+        "base64_content": base64_contents
+    });
+
+    tracing::info!("Returning base64 encoded file");
+    Ok((
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, "application/json")],
+        serde_json::to_string(&response).unwrap()
+    ))
+}
+
 async fn get_files_from_store(
     State(pool): State<PgPool>,
     Path(store_id): Path<i32>,
@@ -555,7 +604,8 @@ async fn main() -> Result<(), color_eyre::Report> {
         .route("/store", get(get_user_stores))
         .route("/store/:store_id/files", get(get_files_from_store))
         .route("/store/:store_id/edit", post(update_store))
-        .route("/file/:file_id", get(get_file_by_id))
+        // .route("/file/:file_id", get(get_file_by_id))
+        .route("/file/:file_id", get(get_file_by_id_base64))
         .layer(ServiceBuilder::new().layer(axum::middleware::from_fn(middleware::authorization_middleware)));
         // .layer(cors);
 
