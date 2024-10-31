@@ -1,10 +1,32 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import Card from '../components/Card.astro';
-const response = await fetch("http://localhost:3000/store/1/files");
-const data = await response.json();
+import axios from 'axios';
+// const response = await fetch("http://localhost:3000/store/1/files");
+// const data = await response.json();
+// console.log(`Test: ${Astro.cookies.has("token")}`)
+let data;
+if (!Astro.cookies.has("token")) {
+    // console.log("redirecting");
+    return Astro.redirect("/login");
+}else{
+    // get and decode jwt from cookie
+    // and send axios request to http://localhost:3000/store/1/files
+    console.log(`Token: ${Astro.cookies.has("token")}`);
+    // axios.get(`http://localhost:3000/store/1/files`)
+    // .then(function (response) {
+    //     console.log(response["data"]);
+    //     // token = response["data"]["token"]
+    // })
+    // .catch(function (error) {
+    //     console.error(error["response"]["data"]["error"]);
+    //     // usernameError = error["response"]["data"]["error"];
+    //     // passwordError = error["response"]["data"]["error"];
+    // });
+}
 ---
 
-<main>
-
+<main class="h-screen bg-background text-text grid grid-cols-1 grid-rows-1 place-items-center">
+    <p>Test</p>
+    <!-- <pre>{Astro.cookies.get("token")?.value}</pre> -->
 </main>

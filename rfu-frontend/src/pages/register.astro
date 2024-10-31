@@ -1,6 +1,9 @@
 ---
 import RegisterForm from "../components/RegisterForm.svelte";
 // import InputComponent from "../components/InputComponent.svelte";
+if (Astro.cookies.has("token")) {
+    return Astro.redirect("/");
+}
 ---
 
 <main class="h-screen bg-background text-text grid grid-cols-1 grid-rows-1 place-items-center">

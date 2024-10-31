@@ -144,7 +144,8 @@ async fn register_user(State(pool): State<PgPool>, Json(user): Json<User>) -> Re
         }
     };
 
-    return Ok((StatusCode::OK, token));
+    // return Ok((StatusCode::OK, token));
+    return Ok((StatusCode::OK, messages::create_json_response(messages::MessageType::Token, token)));
 }
 
 async fn login_user(State(pool): State<PgPool>, Json(credentials): Json<User>) -> Result<(StatusCode, String), (StatusCode, String)> {

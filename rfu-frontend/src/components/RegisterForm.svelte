@@ -38,8 +38,8 @@
                 password: password
             })
             .then(function (response) {
-                console.log(response["data"]["token"]);
-                token = response["data"]["token"]
+                token = response["data"]["token"];
+                Cookies.set("token", token);
             })
             .catch(function (error) {
                 console.error(error["response"]["data"]["error"]);
