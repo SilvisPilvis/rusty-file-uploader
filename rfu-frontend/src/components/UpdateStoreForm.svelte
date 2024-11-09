@@ -12,7 +12,10 @@
             return;
         }
     
-        axios.post(`http://127.0.0.1:3000/store/${store_id}/edit`, {
+        axios.post(`http://127.0.0.1:3000/store/${storeId}/edit`, {
+            headers: {
+                Authorization: `Bearer ${Astro.cookies.get("token")?.value}`
+            },
             name: name
         })
         .then(function (response) {

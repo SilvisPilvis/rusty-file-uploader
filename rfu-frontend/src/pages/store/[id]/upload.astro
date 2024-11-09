@@ -1,7 +1,15 @@
 ---
-import UploadForm from "../../../components/UploadForm.svelte"
+import UploadForm from "../../../components/UploadForm.svelte";
+
+const { id } = Astro.params;
+
+if (!Astro.cookies.has("token")){
+    return Astro.redirect("/login");
+}
+
+// const { title } = await fetch(`https://api.mangadex.org/store/chapter/${id}`).then((r) => r.json());
 ---
 
 <main class="h-screen bg-background text-text grid grid-cols-1 grid-rows-1 place-items-center">
-    <UploadForm client:load/>
+  <UploadForm storeId={id} client:load/>
 </main>

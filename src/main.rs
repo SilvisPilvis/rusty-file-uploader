@@ -18,7 +18,7 @@ use argon2::{
     Argon2
 };
 use jsonwebtoken::{self, encode, EncodingKey, Header};
-use tower_http::trace::{self, TraceLayer};
+use tower_http::{cors::AllowCredentials, trace::{self, TraceLayer}};
 use tower_http::cors::{CorsLayer, Any};
 use tower::ServiceBuilder;
 // use tracing::Level;
@@ -593,31 +593,39 @@ async fn main() -> Result<(), color_eyre::Report> {
 
     // Configure CORS to allow all origins
     let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
+    // .allow_origin(Any)
+    .allow_origin(tower_http::cors::AllowOrigin::exact("http://127.0.0.1:3000".parse().unwrap()))
+    .allow_origin(tower_http::cors::AllowOrigin::exact("http://127.0.0.1:4321".parse().unwrap()))
+    .allow_origin(tower_http::cors::AllowOrigin::exact("http://localhost:4321".parse().unwrap()))
+    // .allow_origin("http://localhost:3000".parse().unwrap())
+    // .allow_origin("http://localhost:5173".parse().unwrap())
+    .allow_methods(vec![axum::http::Method::OPTIONS, axum::http::Method::GET, axum::http::Method::POST, axum::http::Method::PUT, axum::http::Method::DELETE])
+    // .allow_methods(Any)
+    .allow_headers(vec![header::AUTHORIZATION, header::ACCEPT, header::CONTENT_TYPE])
+    // .allow_headers(Any)
+    .allow_credentials(AllowCredentials::yes());
     
+    // Authenticated routes
     let auth_routes = Router::new()
-        .route("/store/:store_id/upload", post(upload_file))
-        .route("/store/create", post(create_store))
-        .route("/store", get(get_user_stores))
-        .route("/store/:store_id/files", get(get_files_from_store))
-        .route("/store/:store_id/edit", post(update_store))
-        // .route("/file/:file_id", get(get_file_by_id))
-        .route("/file/:file_id", get(get_file_by_id_base64))
-        .layer(ServiceBuilder::new().layer(axum::middleware::from_fn(middleware::authorization_middleware)));
-        // .layer(cors);
-
+    .route("/store/:store_id/upload", post(upload_file))
+    .route("/store/create", post(create_store))
+    .route("/store", get(get_user_stores))
+    .route("/store/:store_id/files", get(get_files_from_store))
+    .route("/store/:store_id/edit", post(update_store))
+    .route("/file/:file_id", get(get_file_by_id_base64))
+    .layer( ServiceBuilder::new() .layer(axum::middleware::from_fn(middleware::authorization_middleware))
+    .layer(cors.clone()));
+    
+    // Public routes
     let app = Router::new()
-        .route("/", get(health_check))
-        .route("/register", post(register_user))
-        .route("/login", post(login_user))
-        .route("/reset-password", post(reset_password))
-        .nest("", auth_routes)
-        .with_state(pool)
-        .layer(trace_layer)
-        .layer(cors); // Apply CORS middleware
-
+    .route("/", get(health_check))
+    .route("/register", post(register_user))
+    .route("/login", post(login_user))
+    .route("/reset-password", post(reset_password))
+    .nest("", auth_routes) .with_state(pool)
+    .layer(trace_layer)
+    .layer(cors); // Apply CORS middleware
+    // Start server
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3000").await.unwrap();
     axum::serve(listener, app.into_make_service()).await.unwrap();
 
