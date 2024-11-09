@@ -1,32 +1,54 @@
 ---
-import Layout from '../layouts/Layout.astro';
-import Card from '../components/Card.astro';
-import axios from 'axios';
-// const response = await fetch("http://localhost:3000/store/1/files");
-// const data = await response.json();
-// console.log(`Test: ${Astro.cookies.has("token")}`)
-let data;
+import axios from "axios";
+import Cookies from "js-cookie";
+import moment from 'moment';
+
 if (!Astro.cookies.has("token")) {
-    // console.log("redirecting");
     return Astro.redirect("/login");
-}else{
-    // get and decode jwt from cookie
-    // and send axios request to http://localhost:3000/store/1/files
-    console.log(`Token: ${Astro.cookies.has("token")}`);
-    // axios.get(`http://localhost:3000/store/1/files`)
-    // .then(function (response) {
-    //     console.log(response["data"]);
-    //     // token = response["data"]["token"]
-    // })
-    // .catch(function (error) {
-    //     console.error(error["response"]["data"]["error"]);
-    //     // usernameError = error["response"]["data"]["error"];
-    //     // passwordError = error["response"]["data"]["error"];
-    // });
+}
+
+// Define the type for your data
+interface Store {
+  id: number;
+  name: string;
+  created_at: Array<Number>;
+  cover: number;
+  file_count: number;
+}
+
+// Fetch data in the component's server-side code
+let stores: Store[] = [];
+
+try {
+  const response = await axios.get('http://127.0.0.1:3000/store', {
+    headers: {
+        Authorization: `Bearer ${Astro.cookies.get("token")?.value}`
+    }
+  });
+  stores = response["data"]["user_stores"];
+//   console.log(response["data"]["user_stores"][0]["created_at"])
+} catch (e) {
+//   error = e instanceof Error ? e.message : 'An error occurred';
+  console.error('Error fetching posts:', e.response.data.error);
 }
 ---
 
-<main class="h-screen bg-background text-text flex items-center justify-center">
-    <p class="text-wrap">{Astro.cookies.get("token")?.value}</p>
-    <!-- <pre class="">{Astro.cookies.get("token")?.value}</pre> -->
+<main class="h-screen bg-background text-text flex justify-center items-center">
+    {stores.map((store) => (
+        <a href={`/store/${store.id}/files`}>
+            <div class="bg-primary p-4 gap-4 rounded-md">
+                <p>Id: {store.id}</p>
+                <p>Name: {store.name}</p>
+                <p>Files: {store.file_count}</p>
+                <p>{moment().year(store.created_at[0])
+                  .dayOfYear(store.created_at[1])
+                  .hours(store.created_at[2])
+                  .minutes(store.created_at[3])
+                  .seconds(store.created_at[4])
+                  .milliseconds(Math.floor(store.created_at[5] / 1_000_000))
+                  .format('DD-MM-YYYY HH:mm')
+                  }</p>
+            </div>
+        </a>
+    ))}
 </main>

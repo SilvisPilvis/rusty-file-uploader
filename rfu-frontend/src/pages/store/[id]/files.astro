@@ -10,7 +10,6 @@ if (!Astro.cookies.has("token")) {
 const { id } = Astro.params;
 
 // Define the type for your data
-// Define the type for your data
 interface File {
   file_id: number;
   content?: string;
@@ -74,14 +73,32 @@ try {
   console.error('Error fetching files:', e.response.data);
 }
 ---
+<script>
+    let image = document.querySelectorAll("img");
+
+    for (let i = 0; i < image.length; i++) {
+        image[i].addEventListener("click", function(e) {
+            e.preventDefault();
+            viewFullscreen(image[i]);
+        });
+    }
+
+    function viewFullscreen(image) {
+        document.fullscreenElement ? image.exitFullscreen() : image.requestFullscreen();
+    }
+</script>
+
 
 <main class="h-screen bg-background text-text flex justify-center items-center">
-  <section class="grid grid-cols-6 grid-rows-2 gap-2 m-2">
+    <!-- <section class="grid grid-cols-6 grid-rows-2 gap-2 m-2"> -->
+    <section class="flex flex-row flex-wrap gap-2 m-2 w-full h-full">
     {files.map((file) => (
-      <div class="grid grid-rows-2 grid-cols-1">
-        <img src={file.content} alt="" class="min-w-26 min-h-26 max-w-52 max-h-52 rounded-md object-cover mx-auto m-2">
-        <p class="text-wrap">{file.name}</p>
-      </div>
+    // <div class="grid grid-rows-2 grid-cols-1">
+        <div class="flex flex-col h-min">
+            <img src={file.content} alt="" class="min-w-26 min-h-26 max-w-52 max-h-52 rounded-md mx-auto m-2 object-contain">
+            <p class="text-wrap break-words text-center w-full">{file.name}</p>
+        </div>
     ))}
+    <a href=`/store/${id}/upload` class="flex justify-center items-center m-2 min-h-26 max-h-52 max-w-min px-10 text-center text-2xl rounded-md bg-primary">Upload</a>
   </section>
 </main>

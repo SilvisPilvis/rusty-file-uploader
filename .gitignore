@@ -1,2 +1,5 @@
 /target
+/uploads
 /uploads/*
+*.png
+*.jpg

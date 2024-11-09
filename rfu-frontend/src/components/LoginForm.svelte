@@ -40,6 +40,7 @@
                 token = response["data"]["token"];
                 Cookies.set("token", token);
                 // redirect
+                window.location.href = "/";
             })
             .catch(function (error) {
                 console.error(error);
