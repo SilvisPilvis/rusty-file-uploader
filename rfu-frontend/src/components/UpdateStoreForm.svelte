@@ -3,6 +3,7 @@
     import axios from "axios";
     let { nameError = '', name } = $state("");
     let {storeId = $bindable("")} = $props();
+    import { API_URL } from './constants';
     
     async function submit() {
         nameError = "";
@@ -12,7 +13,7 @@
             return;
         }
     
-        axios.post(`http://127.0.0.1:3000/store/${storeId}/edit`, {
+        axios.post(`${API_URL}/store/${storeId}/edit`, {
             headers: {
                 Authorization: `Bearer ${Astro.cookies.get("token")?.value}`
             },

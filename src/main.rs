@@ -1,10 +1,10 @@
-use std::env;
+use std::{env, io};
 use color_eyre;
 use axum::{
     extract::{State, Multipart, Path, Extension}, http::{StatusCode, header}, routing::{get, post}, Json, Router, response::IntoResponse
 };
 use serde::{Deserialize, Serialize};
-use sqlx::PgPool;
+use sqlx::{migrate, pool, PgPool};
 use sqlx::postgres::PgPoolOptions;
 use time::PrimitiveDateTime;
 use tokio::{fs::File, io::AsyncWriteExt, io::AsyncReadExt};
@@ -25,6 +25,7 @@ use tower::ServiceBuilder;
 use uuid::Uuid;
 // use base64::prelude::*;
 use base64::{Engine as _, engine::{general_purpose}};
+use std::io::Error;
 
 mod middleware;
 pub use middleware::Claims;
@@ -560,6 +561,25 @@ async fn reset_password(State(pool): State<PgPool>, Json(user): Json<ResetPasswo
     return Ok((StatusCode::OK, messages::create_json_response(messages::MessageType::Message, message.to_string())))
 }
 
+async fn migrate(pool: PgPool) -> Result<(), color_eyre::Report> {
+    sqlx::migrate!("src/migrations/")
+        .run(&pool)
+        .await?;
+
+    // return Ok((StatusCode::OK, messages::create_json_response(messages::MessageType::Message, message.to_string())))
+    return Ok(());
+
+    // sqlx::query_file!("src/migrations/20241015210239_create-tables.sql")
+    // .execute(&pool)
+    // .await
+    // .map_err(|_| {
+    //     (
+    //         StatusCode::INTERNAL_SERVER_ERROR,
+    //         messages::create_json_response(messages::MessageType::Error, "Failed to migrate database".to_string()),
+    //     )
+    // })?;
+}
+
 // #[dotenvy::load]
 #[tokio::main]
 async fn main() -> Result<(), color_eyre::Report> {
@@ -569,6 +589,7 @@ async fn main() -> Result<(), color_eyre::Report> {
 
     // Set RUST_LOG if not already set
     if std::env::var("RUST_LOG").is_err() {
+        println!("Setting default RUST_LOG");
         std::env::set_var("RUST_LOG", "info");    
     }
 
@@ -585,9 +606,18 @@ async fn main() -> Result<(), color_eyre::Report> {
     //         .connect(&env::var("DATABASE_URL")?).await?;
     // }
 
+    if std::env::var("API_URL").is_err() {
+        println!("Setting default API_URL");
+        std::env::set_var("API_URL", "http://127.0.0.1:3000");    
+    }
+    
+
     let pool = PgPoolOptions::new()
         .max_connections(5)
         .connect(&env::var("DATABASE_URL")?).await?;
+
+    // Migrate database
+    migrate(pool.clone()).await?;
 
     tracing::info!("Connected to database");
 
@@ -644,7 +674,8 @@ async fn main() -> Result<(), color_eyre::Report> {
     .layer(trace_layer)
     .layer(cors); // Apply CORS middleware
     // Start server
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:3000").await.unwrap();
+    // let listener = tokio::net::TcpListener::bind("127.0.0.1:3000").await.unwrap();
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
     axum::serve(listener, app.into_make_service()).await.unwrap();
 
     // log::info!("Write Uploaded files to tempdir and if upload fails drop tempdir to delete files and try again");

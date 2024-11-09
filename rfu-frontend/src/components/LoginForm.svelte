@@ -2,6 +2,7 @@
     import InputComponent from "./InputComponent.svelte";
     import axios from "axios";
     import Cookies from "js-cookie";
+    import { API_URL } from './constants';
     let {
         usernameError = "",
         passwordError = "",
@@ -31,7 +32,7 @@
         }
 
         axios
-            .post("http://127.0.0.1:3000/login", {
+            .post(`${API_URL}/login`, {
                 username: username,
                 password: password,
             })

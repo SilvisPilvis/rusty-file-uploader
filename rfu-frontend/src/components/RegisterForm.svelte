@@ -2,6 +2,7 @@
     import InputComponent from "./InputComponent.svelte";
     import axios from "axios";
     import Cookies from "js-cookie";
+    import { API_URL } from './constants';
     
     let { usernameError = '', passwordError = "", repeatError = "", username = "", password = "", repeatPass = "", token } = $state("");
     
@@ -35,7 +36,7 @@
         }
 
         if(username !== "" && password !== "" && repeatPass !== "" && password === repeatPass){
-            axios.post('http://127.0.0.1:3000/register', {
+            axios.post(`${API_URL}/register`, {
                 username: username,
                 password: password
             })

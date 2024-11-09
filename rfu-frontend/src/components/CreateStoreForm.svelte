@@ -1,6 +1,7 @@
 <script>
     import InputComponent from "./InputComponent.svelte";
     import axios from "axios";
+    import { API_URL } from '../lib/constants';
     let { nameError = '', name } = $state("");
     
     async function submit() {
@@ -11,7 +12,7 @@
             return;
         }
     
-        axios.post('http://127.0.0.1:3000/store/create', {
+        axios.post(`${API_URL}/store/create`, {
             name: name,
         })
         .then(function (response) {

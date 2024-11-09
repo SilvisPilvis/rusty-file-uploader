@@ -2,6 +2,7 @@
 import axios from "axios";
 import Cookies from "js-cookie";
 import moment from 'moment';
+import { API_URL } from '../lib/constants';
 
 if (!Astro.cookies.has("token")) {
     return Astro.redirect("/login");
@@ -20,7 +21,7 @@ interface Store {
 let stores: Store[] = [];
 
 try {
-  const response = await axios.get('http://127.0.0.1:3000/store', {
+  const response = await axios.get(`${API_URL}/store`, {
     headers: {
         Authorization: `Bearer ${Astro.cookies.get("token")?.value}`
     }

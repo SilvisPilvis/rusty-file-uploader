@@ -1,5 +1,6 @@
 ---
 import axios from "axios";
+import { API_URL } from '../../../lib/constants';
 // import Cookies from "js-cookie";
 // import { BufferEncoding } from "typescript";
 
@@ -23,7 +24,7 @@ let files: File[] = [];
 
 try {
   // First, get the list of file IDs
-  const listResponse = await axios.get(`http://127.0.0.1:3000/store/${id}/files`, {
+  const listResponse = await axios.get(`${API_URL}/store/${id}/files`, {
     headers: {
       Authorization: `Bearer ${Astro.cookies.get("token")?.value}`
     }
@@ -35,7 +36,7 @@ try {
  // Fetch content for each file concurrently
  const fileContentPromises = fileIds.map(async (fileId: number) => {
     try {
-      const fileResponse = await axios.get(`http://127.0.0.1:3000/file/${fileId}`, {
+      const fileResponse = await axios.get(`${API_URL}/file/${fileId}`, {
         headers: {
           Authorization: `Bearer ${Astro.cookies.get("token")?.value}`
         },

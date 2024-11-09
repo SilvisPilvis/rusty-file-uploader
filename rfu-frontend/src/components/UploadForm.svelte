@@ -2,6 +2,7 @@
     import FileInputComponent from "./FileInputComponent.svelte";
     import axios from "axios";
     import Cookies from "js-cookie";
+    import { API_URL } from './constants';
     let fileError = $state("");
     let { files, uploaded } = $state("");
     let { storeId = $bindable() } = $props();
@@ -33,7 +34,7 @@
         }
 
         axios.post(
-                `http://127.0.0.1:3000/store/${storeId}/upload`, uploaded,
+                `${API_URL}/store/${storeId}/upload`, uploaded,
                 {
                     // withCredentials: true,
                     headers: {
