@@ -19,12 +19,12 @@ use argon2::{
 };
 use jsonwebtoken::{self, encode, EncodingKey, Header};
 use tower_http::{cors::AllowCredentials, trace::{self, TraceLayer}};
-use tower_http::cors::{CorsLayer, Any};
+use tower_http::cors::CorsLayer;
 use tower::ServiceBuilder;
 // use tracing::Level;
 use uuid::Uuid;
 // use base64::prelude::*;
-use base64::{Engine as _, engine::{self, general_purpose}, alphabet};
+use base64::{Engine as _, engine::{general_purpose}};
 
 mod middleware;
 pub use middleware::Claims;
@@ -566,6 +566,24 @@ async fn main() -> Result<(), color_eyre::Report> {
     color_eyre::install()?;
     dotenvy::dotenv()?;
     // dotenv!();
+
+    // Set RUST_LOG if not already set
+    if std::env::var("RUST_LOG").is_err() {
+        std::env::set_var("RUST_LOG", "info");    
+    }
+
+    // let pool;
+
+    // if std::env::var("USE_ENV").is_err() {
+    //     // std::env::set_var("RUST_LOG", "info");
+    //     pool = PgPoolOptions::new()
+    //         .max_connections(5)
+    //         .connect(&env::var("DATABASE_URL")?).await?;   
+    // }else {
+    //     pool = PgPoolOptions::new()
+    //         .max_connections(5)
+    //         .connect(&env::var("DATABASE_URL")?).await?;
+    // }
 
     let pool = PgPoolOptions::new()
         .max_connections(5)
