@@ -2,7 +2,7 @@
     import FileInputComponent from "./FileInputComponent.svelte";
     import axios from "axios";
     import Cookies from "js-cookie";
-    import { API_URL } from './constants';
+    import { API_URL } from "../lib/constants";
     let fileError = $state("");
     let { files, uploaded } = $state("");
     let { storeId = $bindable() } = $props();
@@ -33,21 +33,19 @@
             return;
         }
 
-        axios.post(
-                `${API_URL}/store/${storeId}/upload`, uploaded,
-                {
-                    // withCredentials: true,
-                    headers: {
-                        'Content-Type': 'multipart/form-data',
-                        Authorization: `Bearer ${Cookies.get("token")}`,
-                    },
+        axios
+            .post(`${API_URL}/store/${storeId}/upload`, uploaded, {
+                // withCredentials: true,
+                headers: {
+                    "Content-Type": "multipart/form-data",
+                    Authorization: `Bearer ${Cookies.get("token")}`,
                 },
-            )
-            .then(
-                response => { console.log(response.data);
             })
-            .catch(
-                error => { console.error('Error:', error);
+            .then((response) => {
+                console.log(response.data);
+            })
+            .catch((error) => {
+                console.error("Error:", error);
             });
     }
 
