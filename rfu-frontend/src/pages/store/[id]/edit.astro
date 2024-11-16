@@ -1,6 +1,10 @@
 ---
 import UpdateStoreForm from "../../../components/UpdateStoreForm.svelte"
 const { id } = Astro.params;
+
+if (!Astro.cookies.has("token")) {
+  return Astro.redirect("/login");
+}
 ---
 
 <main class="h-screen bg-background text-text flex justify-center items-center">

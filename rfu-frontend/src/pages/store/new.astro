@@ -1,5 +1,9 @@
 ---
 import CreateStoreForm from "../../components/CreateStoreForm.svelte";
+
+if (Astro.cookies.has("token")) {
+    return Astro.redirect("/login");
+}
 ---
 
 <main class="h-screen bg-background text-text grid grid-cols-1 grid-rows-1 place-items-center">
