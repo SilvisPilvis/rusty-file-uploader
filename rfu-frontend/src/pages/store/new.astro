@@ -1,7 +1,7 @@
 ---
 import CreateStoreForm from "../../components/CreateStoreForm.svelte";
 
-if (Astro.cookies.has("token")) {
+if (!Astro.cookies.has("token")) {
     return Astro.redirect("/login");
 }
 ---
