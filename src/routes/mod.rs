@@ -68,6 +68,10 @@ struct UserStores {
     user_stores: Vec<UserStore>,
 }
 
+struct Page {
+    page: i64,
+}
+
 #[axum::debug_handler]
 pub async fn health_check(
     _req: axum::http::Request<axum::body::Body>,
@@ -585,22 +589,27 @@ pub async fn get_file_by_id_base64(
 pub async fn get_files_from_store(
     State(pool): State<PgPool>,
     Path(store_id): Path<i32>,
+    Json(page): Json<Page>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let file_ids = sqlx::query!("SELECT fileId FROM file_store WHERE storeId = $1", store_id)
-        .fetch_all(&pool) // Changed from fetch_optional to fetch_all
-        .await
-        .map_err(|_| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                messages::create_json_response(
-                    messages::MessageType::Error,
-                    "Failed to get files from db".to_string(),
-                ),
-            )
-        })?
-        .into_iter()
-        .map(|record| record.fileid)
-        .collect::<Vec<i32>>();
+    let file_ids = sqlx::query!(
+        "SELECT fileId FROM file_store WHERE storeId = $1 LIMIT 20 OFFSET $2",
+        store_id,
+        page.page,
+    )
+    .fetch_all(&pool) // Changed from fetch_optional to fetch_all
+    .await
+    .map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            messages::create_json_response(
+                messages::MessageType::Error,
+                "Failed to get files from db".to_string(),
+            ),
+        )
+    })?
+    .into_iter()
+    .map(|record| record.fileid)
+    .collect::<Vec<i32>>();
 
     // Return JSON response
     Ok(Json(StoreFiles { file_ids }))

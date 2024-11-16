@@ -10,6 +10,8 @@ if (!Astro.cookies.has("token")) {
 
 const { id } = Astro.params;
 
+let page = 0;
+
 // Define the type for your data
 interface File {
   file_id: number;
@@ -36,7 +38,8 @@ try {
  // Fetch content for each file concurrently
  const fileContentPromises = fileIds.map(async (fileId: number) => {
     try {
-      const fileResponse = await axios.get(`${API_URL}/file/${fileId}`, {
+        const fileResponse = await axios.get(`${API_URL}/file/${fileId}`,
+        {
         headers: {
           Authorization: `Bearer ${Astro.cookies.get("token")?.value}`
         },
