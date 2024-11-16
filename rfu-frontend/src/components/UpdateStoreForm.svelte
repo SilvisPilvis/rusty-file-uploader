@@ -13,10 +13,9 @@
             return;
         }
 
-        axios
-            .post(`${API_URL}/store/${storeId}/edit`, {
+        axios.post(`${API_URL}/store/${storeId}/edit`, {
                 headers: {
-                    Authorization: `Bearer ${Astro.cookies.get("token")?.value}`,
+                    Authorization: `Bearer ${Cookies.get("token")}`,
                 },
                 name: name,
             })

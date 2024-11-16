@@ -33,8 +33,7 @@
             return;
         }
 
-        axios
-            .post(`${API_URL}/store/${storeId}/upload`, uploaded, {
+        axios.post(`${API_URL}/store/${storeId}/upload`, uploaded, {
                 // withCredentials: true,
                 headers: {
                     "Content-Type": "multipart/form-data",

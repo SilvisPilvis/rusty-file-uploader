@@ -49,8 +49,7 @@
             repeatPass !== "" &&
             password === repeatPass
         ) {
-            axios
-                .post(`${API_URL}/register`, {
+            axios.post(`${API_URL}/register`, {
                     username: username,
                     password: password,
                 })

@@ -31,8 +31,7 @@
             return;
         }
 
-        axios
-            .post(`${API_URL}/login`, {
+        axios.post(`${API_URL}/login`, {
                 username: username,
                 password: password,
             })

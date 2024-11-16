@@ -13,6 +13,9 @@
         }
     
         axios.post(`${API_URL}/store/create`, {
+            headers: {
+                Authorization: `Bearer ${Cookies.get("token")}`,
+            },
             name: name,
         })
         .then(function (response) {
