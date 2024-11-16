@@ -3,4 +3,4 @@
 # Run the server
 # cargo run
 # cargo run --release
-./target/release/rusty-file-uploader
+./target/release/rusty-file-upload
