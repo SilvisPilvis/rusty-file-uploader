@@ -11,6 +11,7 @@ use tower::ServiceBuilder;
 use tower_http::cors::CorsLayer;
 use tower_http::{
     cors::AllowCredentials,
+    cors::Any,
     trace::{self, TraceLayer},
 };
 
@@ -90,31 +91,31 @@ async fn main() -> Result<(), color_eyre::Report> {
         // .allow_origin(tower_http::cors::AllowOrigin::exact(
         //     "http://127.0.0.1:4321".parse::<HeaderValue>().unwrap(),
         // ))
-        .allow_origin(tower_http::cors::AllowOrigin::exact(
-            "http://192.168.101.30:4321".parse::<HeaderValue>().unwrap(),
-        ))
-        // .allow_origin(Any)
-        .allow_methods(vec![
-            axum::http::Method::OPTIONS,
-            axum::http::Method::GET,
-            axum::http::Method::POST,
-            axum::http::Method::PUT,
-            axum::http::Method::DELETE,
-        ])
-        // .allow_methods(Any)
-        .allow_headers(vec![
-            header::AUTHORIZATION,
-            header::ACCEPT,
-            header::CONTENT_TYPE,
-            header::ORIGIN,
-            header::ACCESS_CONTROL_ALLOW_ORIGIN,
-            header::ACCESS_CONTROL_ALLOW_METHODS,
-            header::ACCESS_CONTROL_ALLOW_HEADERS,
-            header::ACCESS_CONTROL_ALLOW_CREDENTIALS,
-        ])
-        // .allow_headers(Any)
-        // .allow_credentials(AllowCredentials::yes());
-        .allow_credentials(true);
+        // .allow_origin(tower_http::cors::AllowOrigin::exact(
+        //     "http://192.168.101.30:4321".parse::<HeaderValue>().unwrap(),
+        // ))
+        .allow_origin(Any)
+        // .allow_methods(vec![
+        //     axum::http::Method::OPTIONS,
+        //     axum::http::Method::GET,
+        //     axum::http::Method::POST,
+        //     axum::http::Method::PUT,
+        //     axum::http::Method::DELETE,
+        // ])
+        .allow_methods(Any)
+        // .allow_headers(vec![
+        //     header::AUTHORIZATION,
+        //     header::ACCEPT,
+        //     header::CONTENT_TYPE,
+        //     header::ORIGIN,
+        //     header::ACCESS_CONTROL_ALLOW_ORIGIN,
+        //     header::ACCESS_CONTROL_ALLOW_METHODS,
+        //     header::ACCESS_CONTROL_ALLOW_HEADERS,
+        //     header::ACCESS_CONTROL_ALLOW_CREDENTIALS,
+        // ])
+        .allow_headers(Any);
+    // .allow_credentials(AllowCredentials::yes());
+    // .allow_credentials(true);
 
     // Authenticated routes
     let auth_routes = Router::new()
