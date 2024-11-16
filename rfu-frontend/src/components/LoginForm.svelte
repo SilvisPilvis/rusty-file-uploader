@@ -2,7 +2,7 @@
     import InputComponent from "./InputComponent.svelte";
     import axios from "axios";
     import Cookies from "js-cookie";
-    import { API_URL } from './constants';
+    import { API_URL } from "../lib/constants";
     let {
         usernameError = "",
         passwordError = "",
@@ -12,7 +12,7 @@
     } = $state("");
 
     async function submit() {
-        usernameError, passwordError = "";
+        usernameError, (passwordError = "");
         // console.log(`username: ${username}, password: ${password}`);
 
         if (password === "") {
@@ -31,7 +31,8 @@
             return;
         }
 
-        axios.post(`${API_URL}/login`, {
+        axios
+            .post(`${API_URL}/login`, {
                 username: username,
                 password: password,
             })
@@ -88,4 +89,3 @@
     />
     <button class="bg-secondary p-4 rounded-md">Login</button>
 </form>
-

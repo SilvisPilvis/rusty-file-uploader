@@ -49,7 +49,8 @@
             repeatPass !== "" &&
             password === repeatPass
         ) {
-            axios.post(`${API_URL}/register`, {
+            axios
+                .post(`${API_URL}/register`, {
                     username: username,
                     password: password,
                 })
@@ -108,4 +109,3 @@
     />
     <button class="bg-secondary p-4 rounded-md">Register</button>
 </form>
-
