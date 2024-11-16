@@ -5,10 +5,6 @@
     import { API_URL } from "../lib/constants";
     let { nameError = "", name } = $state("");
 
-    if (Cookies.get("token") === undefined) {
-        window.location.href = "/login";
-    }
-
     async function submit() {
         console.log(`token: ${Cookies.get("token")}`);
         nameError = "";
