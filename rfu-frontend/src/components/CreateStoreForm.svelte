@@ -15,12 +15,17 @@
         }
 
         axios
-            .post(`${API_URL}/store/create`, {
-                headers: {
-                    Authorization: `Bearer ${Cookies.get("token")}`,
+            .post(
+                `${API_URL}/store/create`,
+                {
+                    name: name,
                 },
-                name: name,
-            })
+                {
+                    headers: {
+                        Authorization: `Bearer ${Cookies.get("token")}`,
+                    },
+                },
+            )
             .then(function (response) {
                 console.log(response["data"]);
             })
