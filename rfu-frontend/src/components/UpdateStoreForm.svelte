@@ -1,6 +1,7 @@
 <script>
     import InputComponent from "./InputComponent.svelte";
     import axios from "axios";
+    import Cookies from "js-cookie";
     let { nameError = "", name } = $state("");
     let { storeId = $bindable("") } = $props();
     import { API_URL } from "../lib/constants";
@@ -13,7 +14,8 @@
             return;
         }
 
-        axios.post(`${API_URL}/store/${storeId}/edit`, {
+        axios
+            .post(`${API_URL}/store/${storeId}/edit`, {
                 headers: {
                     Authorization: `Bearer ${Cookies.get("token")}`,
                 },
@@ -59,4 +61,3 @@
     />
     <button class="bg-secondary p-4 rounded-md">Update</button>
 </form>
-
