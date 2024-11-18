@@ -68,7 +68,8 @@ struct UserStores {
     user_stores: Vec<UserStore>,
 }
 
-struct Page {
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct Page {
     page: i64,
 }
 
@@ -586,6 +587,7 @@ pub async fn get_file_by_id_base64(
     ))
 }
 
+#[axum::debug_handler]
 pub async fn get_files_from_store(
     State(pool): State<PgPool>,
     Path(store_id): Path<i32>,

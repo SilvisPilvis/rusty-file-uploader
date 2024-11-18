@@ -1,0 +1,15 @@
+use sqlx::postgres::PgPoolOptions;
+use std::env;
+use std::io;
+
+fn main() {
+    let pool = PgPoolOptions::new()
+        .max_connections(5)
+        .connect(&env::var("DATABASE_URL")?)
+        .await?;
+
+    // Get user input
+    let mut input = String::new();
+    io::stdin().read_line(&mut input).unwrap();
+    println!("You entered: {}", input);
+}
